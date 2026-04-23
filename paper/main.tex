@@ -1,0 +1,117 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{HBeyond Local Acoustic Patterns: A Hierarchical Multi-Scale Codebook for Music Information Retrieval}
+
+\author{\IEEEauthorblockN{1\textsuperscript{st} Gabriel Espinoza Hern\'andez}
+\IEEEauthorblockA{\textit{Faculty of Computing} \\
+\textit{Universidad de Ingenier\'ia y Tecnolog\'ia (UTEC)}\\
+Lima, Per\'u \\
+gabriel.espinoza.h@utec.edu.pe}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{name of organization (of Aff.)}\\
+City, Country \\
+email address or ORCID}
+\and
+\IEEEauthorblockN{3\textsuperscript{rd} Aurea Soriano-Vargas}
+\IEEEauthorblockA{\textit{Faculty of Computing} \\
+\textit{Universidad de Ingenier\'ia y Tecnolog\'ia (UTEC)}\\
+Lima, Per\'u \\
+0000-0002-8429-4119}
+}
+
+\maketitle
+
+\begin{abstract}
+Most music audio representation models either employ discrete codebooks at a single temporal resolution---losing long-range structural dependencies---or learn hierarchical continuous embeddings that sacrifice the compression and indexing efficiency of discrete codes. We propose a Hierarchical Multi-Scale Codebook architecture that unifies both paradigms: a Transformer encoder is coupled with parallel vector-quantization layers operating at fine ($\sim$200\,ms), medium ($\sim$2\,s), and coarse ($\sim$5--10\,s) temporal scales, trained end-to-end via joint masked token prediction and multi-scale contrastive learning. Representations are evaluated through linear probing on MagnaTagATune (auto-tagging), SALAMI and Harmonix Set (structural segmentation), OpenMIC (instrument classification), and NSynth (pitch detection). By explicitly aligning codebook granularity with musical hierarchy, the model is expected to outperform flat-codebook baselines on structure-dependent tasks while remaining competitive on frame-level tasks, and to yield compact codes suitable for large-scale retrieval.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Music Information Retrieval, Hierarchical Representation Learning, Vector Quantization, Codebook, Self-Supervised Learning, Multi-Scale Audio Analysis
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Music Information Retrieval (MIR) has advanced rapidly through pretrained deep models that produce robust audio embeddings for tagging, classification, segmentation, and retrieval \cite{alonso2025omar, ding2023audio}. Yet a structural mismatch remains: music is inherently hierarchical---notes form motifs, motifs form phrases, phrases form sections---but most models either collapse this hierarchy into a single global vector or process the signal at a fixed frame-level resolution \cite{buisson2024self, tamm2024comparative}.
+
+Two recent trends address parts of this problem in isolation. Discrete codebook models such as OMAR-RQ \cite{alonso2025omar} bring compression and fast indexing via vector quantization, but operate at a single temporal scale. Hierarchical contrastive methods \cite{buisson2024self} capture multi-level structure, but in dense continuous embeddings that lack the efficiency of discrete codes. No existing approach unifies \emph{discrete codebook representations} with \emph{explicit multi-scale temporal hierarchy}.
+
+We propose a \textbf{Hierarchical Multi-Scale Codebook} that bridges this gap: a self-supervised model with parallel codebooks at different temporal resolutions, trained via masked token prediction and multi-scale contrastive learning. Our contributions are:
+\begin{enumerate}
+    \item A hierarchical vector-quantization architecture aligning discrete codes with musical temporal scales.
+    \item An open-source pretrained model evaluated on frame-level (pitch, chords) and track-level (tagging, segmentation, instrument classification) downstream tasks.
+    \item An empirical analysis of how each codebook scale impacts local vs.\ global MIR tasks.
+\end{enumerate}
+
+\section{Related Work}
+
+Recent music representation learning has shifted from handcrafted descriptors toward large pretrained models, contrastive objectives, and token-based self-supervision. While these approaches have improved performance in tagging, retrieval, and segmentation, they also expose a gap that motivates our work: current methods tend to learn either strong global embeddings without an explicit hierarchical structure or task-specific local representations that do not scale cleanly across temporal and semantic levels.
+
+A first line of work focuses on efficient deep architectures for general-purpose music embeddings. MAEST showed that supervised audio transformers can outperform convolutional baselines while reducing feature-extraction cost via patchout-based acceleration \cite{alonso2025omar}. This is important because it demonstrates that efficiency and accuracy need not be mutually exclusive. However, MAEST still operates as a monolithic embedding model: although intermediate transformer layers contain different information, the representation is not explicitly organized into spectral, rhythmic, and structural levels. For our purposes, this is a central limitation. Efficiency at inference does not automatically imply interpretability, controllable granularity, or suitability for large-scale indexing with compact codes.
+
+A second line of work aims to improve transfer by shaping embedding spaces through supervision or distillation. SemiSupCon combines self-supervised and supervised contrastive learning, showing that small amounts of musically meaningful labels can improve robustness and downstream performance \cite{guinot2024semi}. Similarly, Ding and Lerch showed that pretrained audio embeddings can serve as teachers for lightweight student models, improving music classification without fully inheriting the teacher’s computational burden \cite{ding2023audio}. These studies are valuable because they emphasize that the quality of representation depends as much on the geometry of similarity as on model size. Yet both approaches remain limited for hierarchical MIR. SemiSupCon improves what counts as ``similar'', but the learned space is still largely continuous and undifferentiated across scales. Distillation reduces model complexity, but it often compresses a teacher’s opaque representation rather than reorganizing it into musically meaningful levels. In other words, both methods optimize transfer, but neither directly addresses the representation of nested musical structure.
+
+The strongest recent work on hierarchy itself is the self-supervised segmentation framework of Buisson et al., which learns multi-level audio representations by contrasting frame sets sampled at different granularities \cite{buisson2024self}. This paper is especially relevant because it explicitly acknowledges that music structure is hierarchical and that a single embedding is insufficient to model all levels of detail. Their results suggest that different subregions of the learned embedding can specialize in different structural scales. However, the method is still designed primarily for segmentation, not for compact retrieval-oriented representation. The hierarchy is encoded in a deep continuous embedding rather than in a discrete, reusable codebook structure that could support efficient indexing, compression, or modular downstream use. Thus, while Buisson et al. provide strong evidence that multilevel modeling matters, they stop short of offering an efficient representational framework for large-scale MIR.
+
+A related but broader trend is the rise of foundation models trained with self-supervised token prediction. OMAR-RQ is a good example: trained on over 330,000 hours of music audio, it uses masked token prediction and quantization to produce strong open representations across tagging, pitch, chord, beat, and segmentation tasks \cite{alonso2025omar}. This is highly relevant to codebook-based thinking because it brings discrete tokenization back into music representation learning. Still, OMAR-RQ illustrates a different trade-off. Its quantization is learned at scale and optimized for broad transferability, but the resulting tokens are not explicitly structured into interpretable musical levels. In practice, this means the model is powerful but difficult to analyze and expensive to reproduce. For a Hierarchical Multi-Scale Codebook, the key limitation is not accuracy but the lack of explicit architectural alignment between token design and musical hierarchy.
+
+Recent evaluation work also suggests that stronger pretrained embeddings do not necessarily yield uniformly better downstream behavior. In a comparative study for music recommender systems, Tamm and Aljanaki found substantial variability in how pretrained audio representations transfer from MIR tasks to recommendation, indicating that different tasks rely on different aspects of musical information \cite{tamm2024comparative}. This result is particularly important for our proposal because it challenges the assumption that a single embedding space can adequately serve all music applications. If recommendation, tagging, and structural analysis rely on different musical cues, then explicitly separating representation levels may be more principled than forcing all information into a single latent vector. Their findings therefore indirectly support a hierarchical codebook approach, while also exposing a limitation in much of the recent literature: representation learning is often evaluated by aggregate transfer performance rather than by the distribution of information across scales.
+
+Finally, self-supervised contrastive work in retrieval settings shows both the promise and the limits of current embedding-based paradigms. Carvalho et al. improved audio-sheet music retrieval by pretraining cross-modal embeddings with self-supervised contrastive learning, showing clear gains under data scarcity \cite{carvalho2023self}. This strengthens the case for self-supervision in music, especially where labels are expensive. However, as with other contrastive approaches, the learned space remains largely optimized for retrieval alignment rather than for explicit decomposition into local timbral, meso-temporal, and global structural codes. Such methods are effective when the task is ``bring related items closer'', but less informative when the research question is ``what level of musical organization is being represented, and how compactly can it be encoded?''
+
+Taken together, these six papers reveal three consistent limitations in the current literature. First, high-performing music embeddings are often monolithic, even when musical structure is inherently hierarchical \cite{alonso2025omar,guinot2024semi}. Second, hierarchy is usually modeled in dense deep features rather than in compact, reusable discrete representations, which limits interpretability and indexing efficiency \cite{buisson2024self,alonso2025omar}. Third, task transfer remains uneven, suggesting that single-vector representations may entangle cues needed at different musical levels \cite{ding2023audio,tamm2024comparative,carvalho2023self}.
+
+This is precisely where our work can contribute. Rather than replacing recent advances in self-supervision or pretrained transfer, it can be seen as a structural response to their main weakness: the need for a representation that is not only accurate, but also compact, scale-aware, and explicitly organized around the layered nature of music.
+
+\section{Research Problem}
+
+No existing model provides music audio representations that are simultaneously \emph{discrete} (compact and indexable), \emph{hierarchical} (organized across temporal scales), and \emph{musically aligned} (with levels corresponding to meaningful layers of musical structure). We formalize this gap as follows:
+
+\textbf{Problem Statement.} Design a deep learning architecture that integrates vector quantization with multi-scale temporal modeling to produce a discretized audio representation organized across distinct hierarchical levels.
+
+\textbf{RQ1.} How can a self-supervised framework (masked token prediction + contrastive learning) learn a codebook distributed across temporal resolutions---from fine frame-level codes to coarse segment-level codes?
+
+\textbf{RQ2.} Does a hierarchical discrete representation improve simultaneous performance on frame-level tasks (pitch, chords) and structure-level tasks (segmentation, tagging) compared to flat single-scale codebook baselines?
+
+\textbf{Hypothesis.} Parallel codebooks organized by temporal scale will outperform flat codebook approaches on macro-structure tasks (segmentation, recommendation) while maintaining competitive frame-level performance and computational efficiency.
+
+\section{Methodology}
+
+The system follows a self-supervised learning (SSL) paradigm combining \textbf{Masked Token Prediction} (MTP) \cite{alonso2025omar} and \textbf{Multi-Scale Contrastive Learning} \cite{buisson2024self}.
+
+\textbf{Datasets.} Self-supervised pretraining uses the Free Music Archive (FMA-large, $\sim$106k tracks). Downstream evaluation uses MagnaTagATune (auto-tagging, 25k clips), SALAMI and Harmonix Set (structural segmentation), OpenMIC (instrument classification), and NSynth (pitch detection).
+
+\textbf{Pipeline.} The architecture has five stages: (1)~\textit{Input extraction}: mel-spectrograms and CQT representations in overlapping patches at 16\,kHz. (2)~\textit{Hierarchical encoder}: a Transformer-based encoder producing contextualized frame-level representations. (3)~\textit{Multi-scale quantizer}: $K$ parallel codebooks at different latent sampling rates---fine ($\sim$200\,ms, timbral patterns), medium ($\sim$2\,s, motifs), and coarse ($\sim$5--10\,s, structural boundaries)---with strided pooling and EMA-updated commitment loss. (4)~\textit{SSL objective}: a weighted joint loss combining masked token prediction at each scale and N-pair contrastive loss across scales. (5)~\textit{Downstream probing}: frozen features evaluated via linear classifiers or shallow MLPs.
+
+\textbf{Metrics.} Classification: mAP, macro F1, ROC-AUC. Segmentation: HR\textsubscript{0.5F}, HR\textsubscript{3F}, V-measure, L-measure. Pitch: frame-level accuracy.
+
+\textbf{Validation.} Standard dataset splits are used (e.g., 12:1:3 for MTAT); smaller datasets use $K$-fold cross-validation. Robustness is tested via noise injection and time-stretching. Statistical significance against flat-codebook baselines is assessed with Wilcoxon signed-rank tests ($p < 0.05$). Ablation studies isolate each codebook scale's contribution.
+
+\section{Research Plan}
+Cronograma tentativo
+Fases del proyecto
+
+\section{Expected Impact}
+
+\textbf{Scientific.} This work unifies discrete neural coding and hierarchical music analysis, providing empirical evidence on how multi-scale codebook granularity affects downstream tasks. The evaluation framework will serve as a reference for future music foundation models and can extend to other structured audio domains (speech prosody, environmental sound).
+
+\textbf{Applied.} Discrete hierarchical codes reduce storage costs and enable ultra-fast nearest-neighbor retrieval for streaming platforms. Multi-scale representations support intra-track navigation and adaptive recommendation that dynamically selects the most relevant codebook level per user context \cite{tamm2024comparative}.
+
+\textbf{Ethical.} The model and weights will be released open-source. Pretraining data will be sourced from openly licensed collections (FMA) with attention to genre and cultural diversity to mitigate Western-centric biases.
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
