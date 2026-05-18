@@ -5,10 +5,9 @@ Supports: GTZAN, FMA-small, MagnaTagATune, IRMAS.
 All datasets are expected to be pre-downloaded on Google Drive.
 """
 
-import os
 import numpy as np
 import pandas as pd
-from typing import List, Tuple, Optional, Dict
+from typing import List
 from pathlib import Path
 
 

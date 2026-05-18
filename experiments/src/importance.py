@@ -8,7 +8,7 @@ Implements:
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Tuple
 from sklearn.inspection import permutation_importance
 from .features import FEATURE_DIMS, SCALES
 

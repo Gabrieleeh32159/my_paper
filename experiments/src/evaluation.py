@@ -9,7 +9,7 @@ Instruments (IRMAS): accuracy, F1 macro.
 import numpy as np
 from typing import Dict, List, Optional
 from sklearn.metrics import (
-    accuracy_score, f1_score, classification_report,
+    accuracy_score, f1_score,
     average_precision_score, roc_auc_score
 )
 

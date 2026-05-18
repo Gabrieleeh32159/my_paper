@@ -5,8 +5,8 @@ Implements: single-scale, early fusion, late fusion, TSI-weighted fusion.
 """
 
 import numpy as np
-from typing import Dict, List, Tuple
-from .features import FEATURE_DIMS, AGGREGATED_DIM
+from typing import Dict
+from .features import FEATURE_DIMS
 
 
 def single_scale(features: Dict[str, np.ndarray], scale: str) -> np.ndarray:
