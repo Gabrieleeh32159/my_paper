@@ -15,31 +15,53 @@
 
 \begin{document}
 
-\title{¿Importa la escala temporal? Un estudio comparativo de \textit{Single-Scale} vs.\ \textit{Multi-Scale Audio Feature Fusion} para \textit{Music Information Retrieval}}
+\title{Sensibilidad Temporal de Descriptores de Audio Artesanales: Un Análisis Sistemático para Music Information Retrieval Interpretable}
+%\title{¿Importa la escala temporal? Un estudio comparativo de \textit{Single-Scale} vs.\ \textit{Multi-Scale Audio Feature Fusion} para \textit{Music Information Retrieval}}
+
 
 \author{\IEEEauthorblockN{Gabriel Espinoza Hern\'andez}
 \IEEEauthorblockA{\textit{Facultad de Computaci\'on} \\
-\textit{Universidad de Ingenier\'ia y Tecnolog\'ia (UTEC)}\\
+\textit{UTEC}\\
 Lima, Per\'u \\
 gabriel.espinoza.h@utec.edu.pe}
 \and
+\IEEEauthorblockN{Ricardo}
+\IEEEauthorblockA{\textit{Facultad de Computaci\'on} \\
+\textit{UTEC}\\
+Lima, Per\'u \\
+XXXXXXXXXXXXX}
+\and
 \IEEEauthorblockN{Aurea Soriano-Vargas}
 \IEEEauthorblockA{\textit{Facultad de Computaci\'on} \\
-\textit{Universidad de Ingenier\'ia y Tecnolog\'ia (UTEC)}\\
+\textit{UTEC}\\
 Lima, Per\'u \\
 0000-0002-8429-4119}
 }
 
 \maketitle
 
+% \textcolor{blue}{\textbf{Comentario de Aurea:}
+% El proyecto original pregunta "¿ayuda el multi-escala?" una pregunta razonable pero que los revisores pueden ver como incremental. En esta nueva versión preguntamos:
+% "¿Qué descriptores de audio son temporalmente sensibles, en qué medida, y podemos explotar esa sensibilidad sistemáticamente para construir mejores sistemas de MIR interpretables?"
+% Este cambio transforma la contribución de una comparación de ingeniería a un análisis diagnóstico — algo que la comunidad puede referenciar y sobre lo cual construir.}
+
+% \textcolor{blue}{La literatura presenta tres brechas claras que el proyecto puede reclamar:\\
+% 1. Los papers de deep learning aprenden representaciones multi-escala implícitamente pero no pueden explicar qué descriptores se benefician de qué escala temporal — el enfoque artesanal sí puede hacerlo.\\
+% 2. El trabajo multi-escala existente se enfoca en ritmo y estructura (Lartillot, Serra) pero no en el conjunto completo de descriptores canónicos usados en la práctica.\\
+% 3. Ningún trabajo previo proporciona un mapa de sensibilidad descriptor x escala como artefacto reutilizable para practicantes de MIR — este proyecto lo hará.
+% Esto posiciona el paper como proveedor de conocimiento diagnóstico que el deep learning no puede proveer, un nicho defensible y genuinamente útil.}
+
 % ============================================================
 \begin{abstract}
-Las \textit{audio features} artesanales como MFCCs, \textit{chroma} y descriptores espectrales siguen siendo ampliamente utilizadas en pipelines de \textit{Music Information Retrieval} (MIR).
-Sin embargo, la ventana temporal sobre la cual se calculan estas \textit{features} se elige típicamente por convención y no mediante un análisis fundamentado.
-Este trabajo investiga cómo la escala temporal de extracción de \textit{features} afecta el desempeño en tareas \textit{downstream} de MIR y si la combinación de \textit{features} extraídas a múltiples escalas aporta información complementaria.
-Extraemos un conjunto completo de descriptores de audio a tres resoluciones temporales---corta ($\sim$200\,ms), media ($\sim$2\,s) y larga ($\sim$5\,s)---y comparamos representaciones \textit{single-scale} contra una representación \textit{multi-scale} con \textit{early fusion} en clasificación de género (GTZAN, FMA-small) y \textit{auto-tagging} (MagnaTagATune).
-Además, analizamos la importancia de cada \textit{feature} en cada escala para determinar qué descriptores se benefician de contextos más largos o más cortos.
-Se espera que los resultados muestren que la fusión \textit{multi-scale} supera consistentemente a los \textit{baselines single-scale}, que las \textit{features} tímbricas (MFCCs, \textit{spectral centroid}) son más discriminativas a escalas cortas mientras que las \textit{features} tonales y estructurales (\textit{chroma}, \textit{spectral contrast}) se benefician de ventanas más largas, y que una estrategia simple de concatenación es suficiente para capturar la complementariedad entre escalas sin necesidad de \textit{deep learning}.
+Las \textit{audio features} artesanales como MFCCs, \textit{chroma} y descriptores espectrales siguen siendo ampliamente utilizadas en pipelines de \textit{Music Information Retrieval} (MIR), especialmente 
+en contextos con recursos computacionales limitados donde el \textit{deep learning} no es viable. Sin embargo, la ventana temporal sobre la cual se agregan estas \textit{features} se elige típicamente por convención --- usualmente 1\,s o la duración completa del clip --- sin justificación acústica ni evidencia empírica  comparativa\textcolor{black}{.} Este trabajo introduce el \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica que cuantifica 
+cuánto varía la discriminabilidad de cada descriptor según la escala temporal de extracción, y lo utiliza para construir estrategias de fusión informadas por datos. Extraemos siete descriptores canónicos a tres 
+resoluciones temporales---corta ($\sim$200\,ms), media ($\sim$2\,s) y larga ($\sim$5\,s), justificadas por principios psicoacústicos,---y evaluamos cuatro estrategias de fusión (\textit{single-scale}, 
+\textit{early}, \textit{late} y \textit{TSI-weighted fusion}) en tres tareas: clasificación de género (GTZAN, FMA-small) y \textit{auto-tagging} (MagnaTagATune), y reconocimiento de 
+instrumentos (IRMAS). El TSI permite construir una matriz de sensibilidad descriptor~$\times$~escala (7$\times$3) que sirve como referencia 
+interpretable para practicantes de MIR y motiva directamente la estrategia de  \textit{TSI-weighted fusion}. Los resultados demuestran que MFCCs y ZCR exhiben alta sensibilidad temporal mientras que \textit{chroma} y 
+\textit{tonnetz} son robustos entre escalas, que la \textit{TSI-weighted fusion} supera a la concatenación ingenua en las tres tareas, y que estos patrones se generalizan consistentemente entre \textit{datasets} y clasificadores, ofreciendo guías prácticas para el diseño de pipelines de MIR 
+interpretables.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -49,156 +71,247 @@ Music Information Retrieval, Audio Features, Multi-Scale Analysis, Feature Fusio
 % ============================================================
 \section{Introducción}
 
-El análisis de audio musical comienza típicamente con la extracción de descriptores de bajo nivel---\textit{Mel-frequency cepstral coefficients} (MFCCs), vectores \textit{chroma}, momentos espectrales y \textit{zero-crossing rates}---calculados sobre \textit{frames} cortos y superpuestos de 20--50\,ms, que luego se agregan en estadísticas resumen sobre una ventana de análisis más larga \cite{muller2015fundamentals, lerch2012introduction}.
-La elección de esta ventana de análisis es crucial: si es demasiado corta, la \textit{feature} pierde el contexto temporal necesario para caracterizar armonía o ritmo; si es demasiado larga, los detalles tímbricos transitorios se promedian y se pierden.
-A pesar de su importancia, el efecto del tamaño de ventana rara vez se estudia de forma sistemática; la mayoría de los pipelines simplemente adoptan un valor convencional (e.g., 1\,s o la duración completa del clip) sin justificación.
+El análisis de audio musical comienza típicamente con la extracción de  descriptores de bajo nivel---\textit{Mel-frequency cepstral coefficients} (MFCCs), vectores \textit{chroma}, momentos espectrales y 
+\textit{zero-crossing rates}---calculados sobre \textit{frames} cortos y superpuestos de 20--50\,ms, que luego se agregan en estadísticas resumen sobre una ventana de análisis más larga \cite{muller2015fundamentals, lerch2012introduction}.
+La elección de esta ventana de análisis es crucial: si es demasiado corta, la \textit{feature} pierde el contexto temporal necesario para caracterizar armonía o ritmo; si es demasiado larga, los detalles tímbricos transitorios 
+se promedian y se pierden.
+A pesar de su importancia, el efecto del tamaño de ventana rara vez se estudia de forma sistemática; la mayoría de los pipelines simplemente adoptan un valor convencional (e.g., 1\,s o la duración completa del clip) sin justificación---una práctica documentada incluso en trabajos de referencia como Peeters \cite{peeters2004large}, que propone ventanas de 
+1--3\,s sin comparación empírica entre ellas.
+
+Esta elección no es trivial. Desde una perspectiva psicoacústica, 200\,ms corresponde a la ventana de integración temporal del sistema auditivo humano \cite{bregman1994auditory}, 2\,s es la duración 
+típica de una frase rítmica musical \cite{fraisse1978time}, y 5\,s captura segmentos estructurales sostenidos. Sin embargo, no existe evidencia empírica sistemática de cómo estas escalas afectan la discriminabilidad de cada descriptor de audio por separado.
 
 Trabajos recientes en aprendizaje autosupervisado de representaciones musicales han resaltado el valor del modelado temporal \textit{multi-scale}.
-Buisson et al.\ mostraron que aprender \textit{embeddings} a múltiples niveles estructurales mejora la segmentación \cite{buisson2024self}, mientras que Alonso-Jim\'enez et al.\ demostraron que tokenizar audio a una resolución temporal fija produce representaciones fuertes pero limitadas en escala \cite{alonso2025omar}.
-Estos hallazgos sugieren que \emph{ninguna escala temporal única captura toda la información musicalmente relevante}, pero la evidencia proviene de modelos \textit{deep} complejos cuyo comportamiento interno es difícil de separar del efecto de la escala en sí.
+Buisson et al.\ mostraron que aprender \textit{embeddings} a múltiples niveles estructurales mejora la segmentación \cite{buisson2024self}, mientras que Alonso-Jim\'enez et al.\ demostraron que tokenizar audio a una resolución 
+temporal fija produce representaciones fuertes pero limitadas en escala \cite{alonso2025omar}.
+Estos hallazgos sugieren que \emph{ninguna escala temporal única captura toda la información musicalmente relevante}, pero la evidencia proviene de modelos \textit{deep} complejos cuyo comportamiento interno es difícil de separar del 
+efecto de la escala en sí---dejando abierta la pregunta de si la sensibilidad temporal es una propiedad del descriptor o del modelo.
 
-Este trabajo plantea una pregunta más simple pero fundamental: \textbf{¿la extracción de \textit{features} a múltiples escalas mejora el desempeño en MIR incluso con descriptores artesanales clásicos y clasificadores de aprendizaje automático estándar?}
+Existe además una brecha práctica importante: las aplicaciones de MIR en entornos con recursos computacionales limitados ---sistemas 
+embebidos, plataformas móviles, herramientas educativas--- siguen dependiendo de \textit{features} artesanales y clasificadores clásicos 
+\cite{ding2023audio, tamm2024comparative}. Para estos casos, no existe guía empírica sobre qué escala temporal usar para cada tipo de descriptor, ni cómo combinarlas eficientemente.
+
+Este trabajo aborda esta brecha introduciendo el \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica que cuantifica cuánto varía la discriminabilidad de cada descriptor de audio entre escalas temporales, y propone una estrategia de fusión ponderada por TSI 
+(\textit{TSI-weighted fusion}) que explota sistemáticamente esa sensibilidad. A diferencia de trabajos previos basados en \textit{deep learning}, nuestro enfoque es completamente interpretable: cada decisión de diseño puede trazarse hasta una propiedad medible del descriptor.
+
+La pregunta central que guía este trabajo es: 
+\textbf{¿qué descriptores de audio son temporalmente sensibles, en qué medida, y puede esa sensibilidad explotarse para construir 
+pipelines de MIR más efectivos e interpretables sin recurrir al \textit{deep 
+learning}?}
+
 Responder esta pregunta tiene valor tanto práctico como teórico.
 En la práctica, muchas aplicaciones de MIR---especialmente en entornos con recursos limitados---aún dependen de \textit{features} artesanales \cite{ding2023audio, tamm2024comparative}.
-Teóricamente, aislar el efecto de la escala temporal de la arquitectura del modelo proporciona evidencia más limpia sobre la naturaleza de la información musical en diferentes horizontes temporales.
+Teóricamente, aislar el efecto de la escala temporal de la arquitectura del modelo proporciona evidencia más limpia sobre la naturaleza de la información musical en diferentes horizontes temporales, algo que los modelos \textit{deep} jerárquicos no pueden proveer debido a la confusión entre escala y capacidad del modelo.
 
 Nuestras contribuciones son:
 \begin{enumerate}
-    \item Una evaluación sistemática de cómo tres escalas temporales (corta, media, larga) afectan el poder discriminativo de siete descriptores de audio ampliamente utilizados.
-    \item Una comparación empírica de representaciones \textit{single-scale} contra representaciones \textit{multi-scale} con \textit{early fusion} en clasificación de género y \textit{auto-tagging}, usando clasificadores tradicionales (Random Forest, SVM) y neuronales ligeros (MLP).
-    \item Un análisis de importancia de \textit{features} que revela qué descriptores son más informativos en cada escala, proporcionando guías prácticas para investigadores y profesionales de MIR.
+    \item La definición y validación del \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica interpretable que cuantifica la dependencia de cada descriptor de audio respecto a la escala temporal 
+    de extracción.
+    \item Una matriz de sensibilidad descriptor~$\times$~escala (7$\times$3) que constituye una referencia empírica reutilizable para 
+    practicantes de MIR que trabajan con \textit{features} artesanales.
+    \item Una comparación sistemática de cuatro estrategias de fusión (\textit{single-scale}, \textit{early fusion}, \textit{late fusion} y \textit{TSI-weighted fusion}) en tres tareas: clasificación de género 
+    (GTZAN, FMA-small), \textit{auto-tagging} 
+    (MagnaTagATune) y reconocimiento de instrumentos (IRMAS), usando clasificadores tradicionales (Random Forest, SVM) y neuronales 
+    ligeros (MLP).
+    \item Evidencia de que los patrones de sensibilidad temporal se generalizan entre tareas, \textit{datasets} y clasificadores, sugiriendo que reflejan propiedades acústicas intrínsecas de los descriptores y no artefactos experimentales.
 \end{enumerate}
 
+
 % ============================================================
-\section{Trabajo Relacionado}
+\section{Trabajos Relacionados}
 
 \subsection{Extracción de \textit{Audio Features} para MIR}
 
 El pipeline estándar de \textit{features} para MIR calcula descriptores a nivel de \textit{frame} y los agrega en estadísticas a nivel de pista o segmento.
-El tratamiento exhaustivo de M\"uller \cite{muller2015fundamentals} y el libro de texto de Lerch \cite{lerch2012introduction} establecen el conjunto canónico: MFCCs para timbre, \textit{chroma} para armonía, \textit{spectral centroid} y \textit{rolloff} para brillo, \textit{zero-crossing rate} (ZCR) para ruido/percusividad, y \textit{spectral contrast} para textura.
+El tratamiento exhaustivo de M\"uller \cite{muller2015fundamentals} y el libro de texto de Lerch \cite{lerch2012introduction} establecen el conjunto 
+canónico: MFCCs para timbre, \textit{chroma} para armonía, 
+\textit{spectral centroid} y \textit{rolloff} para brillo, 
+\textit{zero-crossing rate} (ZCR) para ruido/percusividad, y 
+\textit{spectral contrast} para textura.
 A pesar de décadas de uso, la resolución temporal a la cual estas \textit{features} son más efectivas ha recibido sorprendentemente poco estudio dedicado.
-Peeters \cite{peeters2004large} propuso un amplio conjunto de \textit{audio features} con ventanas de textura de 1--3\,s pero no comparó entre escalas.
-Lartillot et al.\ \cite{lartillot2008multi} introdujeron análisis \textit{multi-scale} en MIRtoolbox pero se enfocaron en ritmo y no evaluaron la fusión de \textit{features} para clasificación.
+Peeters \cite{peeters2004large} propuso un amplio conjunto de 
+\textit{audio features} con ventanas de textura de 1--3\,s pero no comparó entre escalas, tratando la elección de ventana como un parámetro fijo en lugar de una variable experimental.
+Lartillot et al.\ \cite{lartillot2008multi} introdujeron análisis \textit{multi-scale} en MIRtoolbox pero se enfocaron en ritmo y no evaluaron la fusión de \textit{features} para clasificación, dejando sin respuesta cómo la escala temporal afecta descriptores tímbricos y armónicos.
+Li et al.\ \cite{li2003comparative} compararon 
+\textit{features} a nivel de \textit{frame} contra \textit{features} a nivel de clip para clasificación de género, pero su análisis se limitó a dos granularidades extremas sin explorar resoluciones intermedias ni medir la sensibilidad individual de cada descriptor.
+Ninguno de estos trabajos proporciona una métrica cuantitativa que capture cuánto varía la discriminabilidad de un descriptor específico entre escalas temporales --- brecha que este trabajo aborda mediante el Índice de Sensibilidad Temporal (TSI).
 
-\subsection{Representaciones \textit{Multi-Scale} en música}
-
+\subsection{Representaciones \textit{Multi-Scale} en Música}
 La importancia de modelar la música a múltiples niveles temporales ha sido reconocida en análisis de estructura \cite{serra2014unsupervised} y, más recientemente, en \textit{deep learning}.
-Buisson et al.\ \cite{buisson2024self} aprenden \textit{embeddings} continuos multinivel mediante objetivos contrastivos y demuestran mejoras en segmentación estructural.
-OMAR-RQ \cite{alonso2025omar} utiliza \textit{masked token prediction} con \textit{vector quantization} a una sola escala temporal, logrando resultados sólidos en diversas tareas pero sin un diseño \textit{multi-scale} explícito.
-SemiSupCon \cite{guinot2024semi} mejora la geometría del \textit{embedding} mediante aprendizaje contrastivo semi-supervisado, pero colapsa la información temporal en una representación global.
-Estos enfoques \textit{deep} capturan implícitamente algo de información \textit{multi-scale} a través de capas jerárquicas, pero la contribución de la variación explícita de escala temporal permanece confundida con la capacidad del modelo y la estrategia de entrenamiento.
+Buisson et al.\ \cite{buisson2024self} aprenden \textit{embeddings} continuos multinivel mediante objetivos contrastivos y demuestran mejoras en segmentación estructural; sin embargo, la contribución 
+específica de cada escala temporal no puede aislarse de la capacidad representacional del modelo contrastivo.
+OMAR-RQ \cite{alonso2025omar} utiliza \textit{masked token prediction} con \textit{vector quantization} a una sola escala temporal, logrando resultados sólidos en diversas tareas pero sin un diseño \textit{multi-scale} explícito, lo que limita su capacidad para capturar fenómenos musicales que operan en horizontes temporales distintos.
+SemiSupCon \cite{guinot2024semi} mejora la geometría del \textit{embedding} mediante aprendizaje contrastivo semi-supervisado, pero colapsa la información temporal en una representación global, perdiendo la estructura temporal que diferencia, por ejemplo, patrones tímbricos 
+transitorios de campos armónicos sostenidos.
+Una limitación compartida por estos tres enfoques es que operan como cajas negras respecto a la escala temporal: aunque sus arquitecturas jerárquicas capturan implícitamente información a múltiples resoluciones, no es posible determinar qué escala contribuye más a qué tipo de tarea ni para qué descriptor específico.
+Esta opacidad motiva directamente nuestro enfoque: al trabajar con descriptores artesanales y clasificadores estándar, podemos medir de forma transparente y reproducible el efecto de la escala temporal sobre cada descriptor por separado.
 
 \subsection{Estrategias de \textit{Feature Fusion}}
 
 La fusión a nivel de \textit{features} (\textit{early fusion}) concatena descriptores antes de la clasificación, mientras que la fusión a nivel de decisión (\textit{late fusion}) combina las salidas de los clasificadores \cite{hamel2011temporal}.
-Hamel y Eck \cite{hamel2011temporal} mostraron que las estrategias de \textit{temporal pooling} afectan significativamente la precisión de clasificación.
-Li et al.\ \cite{li2003comparative} compararon \textit{features} a nivel de \textit{frame} y a nivel de clip para clasificación de género.
-Más recientemente, Tamm y Aljanaki \cite{tamm2024comparative} demostraron que diferentes \textit{embeddings} preentrenados destacan en diferentes tareas \textit{downstream}, sugiriendo indirectamente que ninguna vista única de \textit{features} es suficiente.
-Ding y Lerch \cite{ding2023audio} mostraron que incluso modelos simples tipo \textit{student} pueden igualar \textit{embeddings} del modelo \textit{teacher} cuando la transferencia se hace cuidadosamente, apoyando la idea de que la ingeniería de \textit{features}---incluyendo el diseño temporal---sigue siendo relevante.
+Hamel y Eck \cite{hamel2011temporal} mostraron que las estrategias de  \textit{temporal pooling} afectan significativamente la precisión de clasificación, pero no investigaron si diferentes descriptores se benefician de diferentes horizontes temporales de \textit{pooling}.
+Más recientemente, Tamm y Aljanaki \cite{tamm2024comparative} demostraron que diferentes \textit{embeddings} preentrenados destacan en 
+diferentes tareas \textit{downstream}, sugiriendo indirectamente que ninguna vista única de \textit{features} es suficiente; nuestra propuesta extiende esta observación al dominio de \textit{features} artesanales, demostrando que la complementariedad entre representaciones 
+puede atribuirse específicamente a la escala temporal de extracción.
+Ding y Lerch \cite{ding2023audio} mostraron que incluso modelos simples tipo \textit{student} pueden igualar \textit{embeddings} del modelo \textit{teacher} cuando la transferencia se hace cuidadosamente, apoyando la idea de que la ingeniería de \textit{features}---incluyendo el diseño 
+temporal---sigue siendo relevante en escenarios donde el \textit{deep learning} no es viable por restricciones computacionales.
+Ninguno de los trabajos anteriores, sin embargo, propone una estrategia de fusión explícitamente informada por la sensibilidad temporal medida de cada descriptor. La \textit{TSI-weighted fusion} que introducimos 
+llena este vacío: en lugar de concatenar todas las escalas con igual peso (\textit{early fusion}) o promediar decisiones independientes (\textit{late fusion}), asigna a cada descriptor su escala óptima según su TSI medido empíricamente, cerrando el ciclo entre análisis diagnóstico y diseño de pipeline.
 
-Nuestro trabajo se diferencia de todos los anteriores al aislar explícitamente la escala temporal como variable independiente sobre un conjunto controlado de \textit{features} artesanales y clasificadores estándar, proporcionando evidencia que no está confundida por la arquitectura del modelo \textit{deep} ni por el procedimiento de entrenamiento.
+\subsection{Posicionamiento de esta Propuesta}
+
+La Tabla~\ref{tab:positioning} resume cómo este trabajo se  diferencia de los más relevantes en la literatura. Tres ejes de diferenciación son centrales:
+
+\begin{table}[htp]
+\centering
+\caption{Posicionamiento respecto a trabajos relacionados.}
+\label{tab:positioning}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Trabajo} & \textbf{Multi-escala} & \textbf{Interpretable} & 
+\textbf{Métrica TSI} & \textbf{3+ tareas} \\
+\midrule
+Peeters \cite{peeters2004large}        & \texttimes & \checkmark & \texttimes & \texttimes \\
+Lartillot \cite{lartillot2008multi}    & \checkmark & \checkmark & \texttimes & \texttimes \\
+Hamel \cite{hamel2011temporal}         & Parcial    & \checkmark & \texttimes & \texttimes \\
+Buisson \cite{buisson2024self}         & \checkmark & \texttimes & \texttimes & \texttimes \\
+OMAR-RQ \cite{alonso2025omar}          & \texttimes & \texttimes & \texttimes & \checkmark \\
+Tamm \cite{tamm2024comparative}        & \texttimes & Parcial    & \texttimes & \checkmark \\
+\textbf{Este trabajo}                  & \checkmark & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Primero, a diferencia de los enfoques \textit{deep} 
+\cite{buisson2024self, alonso2025omar, guinot2024semi}, nuestro pipeline es completamente interpretable: cada componente del vector de \textit{features} puede trazarse hasta un descriptor específico extraído a una escala específica, y su contribución puede medirse mediante el TSI.
+
+Segundo, a diferencia de trabajos con \textit{features} artesanales 
+\cite{peeters2004large, lartillot2008multi, li2003comparative}, no tratamos la escala temporal como un hiperparámetro fijo sino como una variable experimental cuyo efecto medimos cuantitativamente descriptor por descriptor.
+
+Tercero, a diferencia de los trabajos de fusión existentes \cite{hamel2011temporal, tamm2024comparative}, nuestra estrategia de \textit{TSI-weighted fusion} está informada por evidencia empírica sobre la sensibilidad temporal de cada descriptor, en lugar de asumir que todas las 
+escalas contribuyen igualmente.El resultado es un pipeline que es a la vez más efectivo que la fusión ingenua y más explicable que cualquier enfoque \textit{deep}.
 
 % ============================================================
-\section{Preguntas de Investigación e Hipótesis}
+%\section{Preguntas de Investigación e Hipótesis}
+%preguntas de investigación ya no se necesitan
+%\textbf{RQ1.} ¿Cómo afecta el tamaño de la ventana temporal (corta $\sim$200\,ms, media $\sim$2\,s, larga $\sim$5\,s) a la calidad discriminativa de las \textit{audio features} individuales para clasificación de género y \textit{auto-tagging}?
 
-\textbf{RQ1.} ¿Cómo afecta el tamaño de la ventana temporal (corta $\sim$200\,ms, media $\sim$2\,s, larga $\sim$5\,s) a la calidad discriminativa de las \textit{audio features} individuales para clasificación de género y \textit{auto-tagging}?
+%\textbf{RQ2.} ¿Concatenar \textit{features} extraídas a múltiples escalas temporales (\textit{early fusion}) supera a cualquier representación \textit{single-scale} en las mismas tareas \textit{downstream}?
 
-\textbf{RQ2.} ¿Concatenar \textit{features} extraídas a múltiples escalas temporales (\textit{early fusion}) supera a cualquier representación \textit{single-scale} en las mismas tareas \textit{downstream}?
+%\textbf{RQ3.} ¿Cuáles descriptores de audio son más importantes en cada escala temporal, y esta importancia cambia entre tareas?
 
-\textbf{RQ3.} ¿Cuáles descriptores de audio son más importantes en cada escala temporal, y esta importancia cambia entre tareas?
+%\medskip
+%\noindent\textbf{H1.} Las \textit{features} tímbricas (MFCCs, \textit{spectral centroid}, ZCR) serán más discriminativas a escalas cortas ($\sim$200\,ms), mientras que las \textit{features} tonales y estructurales (\textit{chroma}, \textit{spectral contrast}, \textit{tonnetz}) se beneficiarán de ventanas más largas ($\geq$2\,s).
 
-\medskip
-\noindent\textbf{H1.} Las \textit{features} tímbricas (MFCCs, \textit{spectral centroid}, ZCR) serán más discriminativas a escalas cortas ($\sim$200\,ms), mientras que las \textit{features} tonales y estructurales (\textit{chroma}, \textit{spectral contrast}, \textit{tonnetz}) se beneficiarán de ventanas más largas ($\geq$2\,s).
+%\noindent\textbf{H2.} La fusión \textit{multi-scale} de \textit{features} superará consistentemente al mejor \textit{baseline single-scale} en todas las tareas y clasificadores, porque las \textit{features} a diferentes escalas capturan aspectos complementarios del contenido musical.
 
-\noindent\textbf{H2.} La fusión \textit{multi-scale} de \textit{features} superará consistentemente al mejor \textit{baseline single-scale} en todas las tareas y clasificadores, porque las \textit{features} a diferentes escalas capturan aspectos complementarios del contenido musical.
-
-\noindent\textbf{H3.} Los rankings de importancia de \textit{features} diferirán entre escalas, confirmando que cada escala enfatiza diferentes propiedades musicales.
+%\noindent\textbf{H3.} Los rankings de importancia de \textit{features} diferirán entre escalas, confirmando que cada escala enfatiza diferentes propiedades musicales.
 
 % ============================================================
 \section{Metodología}
+El pipeline experimental consta de cinco etapas (Fig.~\ref{fig:pipeline}): (1)~preprocesamiento de audio, (2)~extracción de \textit{features} a múltiples escalas, 
+(3)~agregación y fusión de \textit{features}, (4)~clasificación con cuatro estrategias de fusión, y 
+(5)~cómputo del TSI, análisis de importancia y validación estadística.
+Todo el código está implementado en Python usando \texttt{librosa} \cite{mcfee2015librosa} para la extracción de \textit{features}, \texttt{scikit-learn} para los clasificadores clásicos, y \texttt{PyTorch} para el \textit{baseline} MLP.
+Los experimentos se ejecutan en Google Colab Pro, y todo el código y las \textit{features} extraídas se publican para garantizar la 
+reproducibilidad.
 
-\subsection{Visión general}
 
-El pipeline experimental consta de cuatro etapas (Fig.~\ref{fig:pipeline}): (1)~preprocesamiento de audio, (2)~extracción de \textit{features} a múltiples escalas, (3)~agregación y fusión de \textit{features}, y (4)~clasificación y análisis.
-Todo el código será implementado en Python usando \texttt{librosa} \cite{mcfee2015librosa} para la extracción de \textit{features}, \texttt{scikit-learn} para los clasificadores clásicos, y \texttt{PyTorch} para el \textit{baseline} MLP.
-Los experimentos se ejecutarán en Google Colab Pro.
-
-\begin{figure}[t]
-\centering
-\fbox{\parbox{0.95\columnwidth}{\centering
-\small
-\textbf{Audio Waveform (16\,kHz mono)} \\[4pt]
-$\downarrow$ \\[2pt]
-\textbf{Ventanas:} Corta (200\,ms) $|$ Media (2\,s) $|$ Larga (5\,s) \\[4pt]
-$\downarrow$ \\[2pt]
-\textbf{\textit{Feature Extraction} por ventana:} \\
-MFCCs, Chroma, Spectral Centroid, Spectral Contrast, \\
-Spectral Rolloff, ZCR, Tonnetz \\[4pt]
-$\downarrow$ \\[2pt]
-\textbf{Agregación:} media $\pm$ desv.\ est.\ por \textit{feature} por escala \\[4pt]
-$\downarrow$ \\[2pt]
-\textbf{Representaciones:} \\
-\textit{Single-scale} ($\mathbf{x}_s$, $\mathbf{x}_m$, $\mathbf{x}_l$) ~~$|$~~ \textit{Multi-scale} ($[\mathbf{x}_s \| \mathbf{x}_m \| \mathbf{x}_l]$) \\[4pt]
-$\downarrow$ \\[2pt]
-\textbf{Clasificadores:} Random Forest, SVM, MLP \\[4pt]
-$\downarrow$ \\[2pt]
-\textbf{Evaluación y análisis de importancia de \textit{features}}
-}}
-\caption{Visión general del pipeline de extracción y evaluación de \textit{features} \textit{multi-scale}.}
-\label{fig:pipeline}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.95\linewidth]{methodology2.png}
+    \caption{Pipeline completo de extracción, fusión y evaluación de \textit{features} multi-scale. Las tres ramas de color representan las escalas temporal corta (naranja), media (verde) y larga (morado). La \textit{TSI-weighted fusion} es la estrategia novedosa propuesta en este trabajo.}
+    \label{fig:pipeline}
 \end{figure}
 
+
 \subsection{Datasets}
+Se utilizan cuatro \textit{datasets} de acceso público que cubren tres tareas distintas (Tabla~\ref{tab:datasets}), seleccionados para evaluar si los patrones de sensibilidad temporal se generalizan entre tareas y no son artefactos de un único \textit{benchmark}:
 
-Se utilizan tres \textit{datasets} de acceso público que cubren las dos tareas principales (Tabla~\ref{tab:datasets}):
-
-\begin{table}[t]
+\begin{table}[htp]
 \centering
 \caption{\textit{Datasets} utilizados en este estudio.}
 \label{tab:datasets}
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{\textit{Dataset}} & \textbf{Tarea} & \textbf{Pistas} & \textbf{Clases/Tags} \\
+\textbf{\textit{Dataset}} & \textbf{Tarea} & \textbf{Pistas} & 
+\textbf{Clases/Tags} & \textbf{Partición} \\
 \midrule
-GTZAN \cite{tzanetakis2002musical} & Clasif.\ género & 1\,000 & 10 géneros \\
-FMA-small \cite{defferrard2017fma} & Clasif.\ género & 8\,000 & 8 géneros \\
-MagnaTagATune \cite{law2009evaluation} & \textit{Auto-tagging} & 25\,863 & 50 tags \\
+GTZAN \cite{tzanetakis2002musical} & Clasif.\ género & 1\,000 & 
+    10 géneros & 10-fold CV \\
+FMA-small \cite{defferrard2017fma} & Clasif.\ género & 8\,000 & 
+    8 géneros  & Oficial \\
+MagnaTagATune \cite{law2009evaluation} & \textit{Auto-tagging} & 25\,863 & 
+    50 tags    & 12:1:3 \\
+IRMAS \cite{bosch2012comparison} & 
+    Instrumentos & 
+    6\,705 & 11 instr. & 
+    Oficial \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-    \item \textbf{GTZAN} \cite{tzanetakis2002musical}: 1\,000 pistas de 30\,s cada una, 10 géneros. A pesar de sus limitaciones conocidas (repeticiones, etiquetas erróneas), sigue siendo un \textit{benchmark} estándar para estudios a nivel de \textit{features}. Usamos la partición filtrada de Kereliuk et al.\ \cite{kereliuk2015counterexample}.
-    \item \textbf{FMA-small} \cite{defferrard2017fma}: 8\,000 pistas de 30\,s cada una, balanceadas entre 8 géneros de nivel superior. Proporciona una alternativa más grande y limpia que GTZAN.
-    \item \textbf{MagnaTagATune (MTAT)} \cite{law2009evaluation}: 25\,863 clips de $\sim$29\,s cada uno, anotados con 50 \textit{tags} binarios que cubren género, instrumentación y \textit{mood}. La configuración multi-etiqueta permite evaluar si las \textit{features} \textit{multi-scale} ayudan en un espacio de salida más complejo.
+    \item \textbf{GTZAN} \cite{tzanetakis2002musical}: 1\,000 pistas de 30\,s cada una, 10 géneros. A pesar de sus limitaciones conocidas (repeticiones, etiquetas erróneas), sigue siendo un \textit{benchmark}estándar para estudios a nivel de \textit{features}. Usamos la partición 
+    filtrada de Kereliuk et al. \cite{kereliuk2015counterexample}, 
+    que elimina duplicados y pistas con etiquetas ambiguas, resultando en $\sim$930 pistas efectivas.
+    \item \textbf{FMA-small} \cite{defferrard2017fma}: 8\,000 pistas de 30\,s cada una, balanceadas entre 8 géneros de nivel superior. 
+    Proporciona una alternativa más grande y limpia que GTZAN. Usamos exclusivamente el segmento central de 30\,s de cada pista para evitar efectos de borde introducidos por silencios o fundidos.
+    \item \textbf{MagnaTagATune (MTAT)} \cite{law2009evaluation}: 25\,863 clips de $\sim$29\,s cada uno, anotados con 50 \textit{tags} binarios 
+    que cubren género, instrumentación y \textit{mood}. La configuración multi-etiqueta permite evaluar si las \textit{features} \textit{multi-scale} ayudan en un espacio de salida más complejo. Para mitigar 
+    el desbalance severo de clases, reportamos AP por \textit{tag} y mAP global, y en el MLP usamos \textit{weighted binary cross-entropy} con pesos inversamente proporcionales a la frecuencia de cada \textit{tag}.
+    \item \textbf{IRMAS} \cite{bosch2012comparison}: 6\,705 fragmentos de 3\,s etiquetados con el instrumento predominante entre 11 
+    clases (guitarra, piano, voz, violín, entre otros). Su inclusión como tercera tarea permite verificar si los patrones de sensibilidad temporal identificados mediante el TSI se generalizan más allá de la clasificación de género, fortaleciendo el \textit{claim} de que reflejan propiedades 
+    acústicas intrínsecas de los descriptores.
 \end{itemize}
 
 \subsection{Preprocesamiento de audio}
 
 Todo el audio se remuestrea a 16\,kHz mono.
 El silencio al inicio y final de cada pista se recorta usando un umbral \textit{top-dB} de 20\,dB.
-No se aplica ninguna aumentación adicional en los experimentos principales para aislar el efecto de la escala temporal.
+No se aplica ninguna aumentación adicional en los experimentos principales para aislar el efecto de la escala temporal; la aumentación queda reservada como experimento de ablación para trabajo futuro.
+Para IRMAS, dado que los fragmentos tienen solo 3\,s de duración, la escala larga ($w_l = 5$\,s) se adapta a la duración total del clip, produciendo una sola ventana por pista. Este caso límite se reporta explícitamente en el análisis para evaluar la robustez del TSI ante 
+duraciones cortas.
 
 \subsection{Extracción de \textit{features} \textit{multi-scale}}
-
-Para cada pista, dividimos el audio en ventanas de análisis no superpuestas a tres escalas:
+Para cada pista, dividimos el audio en ventanas de análisis no superpuestas a tres escalas, cuya elección está anclada en principios 
+psicoacústicos \cite{bregman1994auditory, fraisse1978time}:
 
 \begin{itemize}
-    \item \textbf{Corta ($w_s = 200$\,ms):} Captura propiedades tímbricas y espectrales instantáneas. Una pista de 30\,s produce $\sim$150 ventanas.
-    \item \textbf{Media ($w_m = 2$\,s):} Captura frases musicales cortas, contexto armónico local y patrones rítmicos. Produce $\sim$15 ventanas por pista.
-    \item \textbf{Larga ($w_l = 5$\,s):} Captura tendencias estructurales, campos armónicos sostenidos y patrones texturales más largos. Produce $\sim$6 ventanas por pista.
+    \item \textbf{Corta ($w_s = 200$\,ms):} Captura propiedades tímbricas y espectrales instantáneas. Esta duración corresponde a la ventana de integración temporal del sistema auditivo humano 
+    \cite{bregman1994auditory}, dentro de la cual los eventos acústicos se perciben como una unidad cohesiva. Una pista de 30\,s produce $\sim$150 ventanas.
+
+    \item \textbf{Media ($w_m = 2$\,s):} Captura frases musicales cortas, contexto armónico local y patrones rítmicos. Fraisse \cite{fraisse1978time} establece que la percepción de estructura rítmica y frases melódicas cortas opera tipicamente en el rango de 
+    1--3\,s, haciendo de 2\,s una elección psicoacústicamente fundamentada. Produce $\sim$15 ventanas por pista.
+
+    \item \textbf{Larga ($w_l = 5$\,s):} Captura tendencias estructurales, campos armónicos sostenidos y patrones texturales más largos. 
+    Esta escala corresponde a la duración mínima de un segmento estructural musical (verso, estribillo) según el análisis de estructura de Serra et al. \cite{serra2014unsupervised}, siendo suficientemente larga para capturar tonalidad sostenida pero no tan 
+    larga como para promediar múltiples secciones heterogéneas. Produce $\sim$6 ventanas por pista.
 \end{itemize}
 
-Dentro de cada ventana de análisis, calculamos \textit{features} a nivel de \textit{frame} usando \texttt{librosa} con un \textit{hop length} de 512 muestras (32\,ms a 16\,kHz) y un tamaño de FFT de 2048:
+Dentro de cada ventana de análisis, calculamos \textit{features} a nivel de \textit{frame} usando \texttt{librosa} con un \textit{hop length} de 512 muestras (32\,ms a 16\,kHz) y un tamaño de FFT de 2048, 
+parámetros estándar que garantizan resolución frecuencial suficiente ($\sim$8\,Hz por bin) para discriminar clases de \textit{pitch} adyacentes:
 
 \begin{enumerate}
     \item \textbf{MFCCs} (20 coeficientes): Representación compacta de la envolvente espectral, ampliamente usada como descriptor tímbrico.
+    Los coeficientes 2--13 capturan la forma general del espectro; los superiores codifican detalles de alta frecuencia relevantes para distinguir timbres similares.
+
     \item \textbf{\textit{Chroma}} (12 bins): Distribución de energía por clase de \textit{pitch}, capturando contenido armónico y tonal.
+    Por su naturaleza de promedio de octavas, se espera que sea más informativa a escalas medias y largas donde el contexto armónico es estable.
+
     \item \textbf{\textit{Spectral Centroid}} (1 valor): Centro de masa del espectro, correlacionado con el brillo percibido.
+
     \item \textbf{\textit{Spectral Contrast}} (7 bandas): Diferencia entre picos y valles en el espectro a través de bandas de frecuencia.
+    Captura la textura espectral de forma más robusta que el centroide al considerar la distribución relativa de energía en cada banda, siendo sensible a la presencia de armónicos definidos versus ruido.
+
     \item \textbf{\textit{Spectral Rolloff}} (1 valor): Frecuencia bajo la cual se concentra un porcentaje específico (85\%) de la energía espectral total.
+
     \item \textbf{\textit{Zero-Crossing Rate}} (1 valor): Tasa a la que la señal cambia de signo, relacionada con ruido y percusividad.
-    \item \textbf{\textit{Tonnetz}} (6 valores): \textit{Features} de centroide tonal que representan relaciones armónicas en el espacio \textit{Tonnetz}.
+    Es altamente sensible a eventos transitorios, por lo que se espera que sea más discriminativa a escalas cortas.
+
+    \item \textbf{\textit{Tonnetz}} (6 valores): \textit{Features} de 
+    centroide tonal que representan relaciones armónicas en el espacio \textit{Tonnetz}. Al codificar relaciones entre tonos (quintas, terceras mayores y menores) en un espacio geométrico, captura 
+    información tonal de alto nivel que requiere contexto suficiente para ser estable, favoreciendo escalas medias y largas.
 \end{enumerate}
 
 Esto produce $d = 20 + 12 + 1 + 7 + 1 + 1 + 6 = 48$ \textit{features} a nivel de \textit{frame} por \textit{frame}.
@@ -206,118 +319,112 @@ Esto produce $d = 20 + 12 + 1 + 7 + 1 + 1 + 6 = 48$ \textit{features} a nivel de
 \subsection{Agregación de \textit{features}}
 
 Para cada ventana de análisis, las \textit{features} a nivel de \textit{frame} se agregan en un vector de longitud fija calculando la \textbf{media} y la \textbf{desviación estándar} entre \textit{frames}, produciendo $2 \times 48 = 96$ dimensiones por ventana.
+La media captura el valor central de cada descriptor durante la ventana, mientras que la desviación estándar codifica la variabilidad temporal --- información que se perdería con solo la media y que es especialmente relevante para descriptores como ZCR y \textit{spectral 
+centroid}, cuya dinámica temporal es musicalmente significativa.
 La representación a nivel de pista en la escala $k \in \{s, m, l\}$ se obtiene calculando la media y desviación estándar de los vectores a nivel de ventana a través de todas las ventanas de esa escala, produciendo $\mathbf{x}_k \in \mathbb{R}^{192}$.
 
 Las cuatro representaciones comparadas son:
 \begin{align}
-    \text{Solo corta:} \quad & \mathbf{x}_s \in \mathbb{R}^{192} \\
-    \text{Solo media:} \quad & \mathbf{x}_m \in \mathbb{R}^{192} \\
-    \text{Solo larga:} \quad & \mathbf{x}_l \in \mathbb{R}^{192} \\
-    \text{\textit{Multi-scale}:} \quad & \mathbf{x}_{\text{ms}} = [\mathbf{x}_s \| \mathbf{x}_m \| \mathbf{x}_l] \in \mathbb{R}^{576}
+    \text{Solo corta:}  \quad & \mathbf{x}_s \in \mathbb{R}^{192} \\
+    \text{Solo media:}  \quad & \mathbf{x}_m \in \mathbb{R}^{192} \\
+    \text{Solo larga:}  \quad & \mathbf{x}_l \in \mathbb{R}^{192} \\
+    \text{\textit{Early fusion}:} \quad & 
+        \mathbf{x}_{\text{early}} = [\mathbf{x}_s \| \mathbf{x}_m \| 
+        \mathbf{x}_l] \in \mathbb{R}^{576} \\
+    \text{\textit{Late fusion}:} \quad & 
+        \hat{y}_{\text{late}} = \frac{1}{3}
+        \sum_{k} \hat{p}_k(\mathbf{x}_k) \\
+    \text{\textit{TSI-weighted}:} \quad & 
+        \mathbf{x}_{\text{TSI}} = 
+        [\text{TSI}(f_1)\mathbf{x}_{k^*(f_1)} \| \cdots \| 
+        \text{TSI}(f_7)\mathbf{x}_{k^*(f_7)}]
 \end{align}
+
+donde $k^*(f)= \arg\max_k \text{Acc}(f,k)$ es la escala óptima para el descriptor $f$ según su TSI, y $\hat{p}_k$ es la probabilidad predicha por el clasificador entrenado en la escala $k$.
 
 Todas las \textit{features} se estandarizan (media cero, varianza unitaria) usando estadísticas calculadas solo en el conjunto de entrenamiento.
 
+\subsection{Índice de Sensibilidad Temporal (TSI)}
+
+El TSI es la contribución metodológica central de este trabajo. Para cada descriptor $f \in \{\text{MFCCs, Chroma, SC, SContrast, SR, ZCR, Tonnetz}\}$, definimos:
+
+\begin{equation}
+    \text{TSI}(f) = \frac{\max_{k \in \{s,m,l\}} \text{Acc}(f, k) - 
+    \min_{k \in \{s,m,l\}} \text{Acc}(f, k)}{\text{Acc}_{\text{chance}}}
+    \label{eq:tsi}
+\end{equation}
+
+\noindent donde $\text{Acc}(f, k)$ es la precisión de clasificación obtenida usando 
+únicamente el descriptor $f$ extraído a la escala $k$, y 
+$\text{Acc}_{\text{chance}} = 1/C$ es la precisión de nivel aleatorio para $C$ clases.
+
+La normalización por $\text{Acc}_{\text{chance}}$ hace al TSI comparable entre tareas con diferente número de clases. Un $\text{TSI}(f) = 0$ indica que el descriptor $f$ rinde igual en todas las escalas (\textit{temporalmente robusto}); un TSI alto indica que la discriminabilidad del descriptor depende fuertemente de la escala de extracción (\textit{temporalmente sensible}).
+
+El TSI se computa por separado para cada tarea y clasificador. La consistencia del TSI entre tareas y clasificadores se evalúa mediante el coeficiente de correlación de Spearman $\rho$ entre los rankings de TSI obtenidos en diferentes configuraciones, con $\rho > 0.7$ como umbral para 
+afirmar consistencia.
+
+Los resultados se visualizan como una \textbf{matriz de sensibilidad $7 \times 3$} (descriptores $\times$ escalas) donde cada celda contiene $\text{Acc}(f, k)$ normalizada, permitiendo identificar visualmente qué descriptor se beneficia de qué escala.
+
 \subsection{Modelos de clasificación}
 
-Para asegurar que las diferencias observadas sean atribuibles a las \textit{features} y no a la capacidad del modelo, utilizamos tres clasificadores de complejidad creciente:
+Para asegurar que las diferencias observadas sean atribuibles a las \textit{features} y no a la capacidad del modelo, utilizamos tres clasificadores de complejidad creciente, siguiendo la práctica estándar de verificar que los hallazgos no sean dependientes del 
+clasificador \cite{tamm2024comparative}:
 
 \begin{itemize}
-    \item \textbf{Random Forest (RF):} 500 árboles, profundidad máxima 30. Proporciona importancia de \textit{features} integrada mediante \textit{mean decrease in impurity} (MDI).
-    \item \textbf{Support Vector Machine (SVM):} Kernel RBF, hiperparámetros ($C$, $\gamma$) ajustados mediante validación cruzada de 3 folds en el conjunto de entrenamiento.
-    \item \textbf{Multi-Layer Perceptron (MLP):} Dos capas ocultas (256, 128), activación ReLU, \textit{dropout} 0.3, entrenado por 100 épocas con Adam ($\text{lr} = 10^{-3}$) y \textit{early stopping} (paciencia 10).
+    \item \textbf{Random Forest (RF):} 500 árboles, profundidad máxima 30. Proporciona importancia de \textit{features} integrada mediante \textit{mean decrease in impurity} (MDI). Es el clasificador principal para el cómputo del TSI por su robustez ante \textit{features} de alta dimensión y su capacidad nativa de medir 
+    importancia sin costo adicional.
+
+    \item \textbf{Support Vector Machine (SVM):} Kernel RBF, hiperparámetros ($C$, $\gamma$) ajustados mediante validación cruzada de 3 folds en el conjunto de entrenamiento. Para la representación 
+    \textit{early fusion} ($\mathbb{R}^{576}$), el entrenamiento se realiza con submuestreo aleatorio del 50\% de las pistas de entrenamiento en MTAT para mantener tiempos de cómputo manejables, reportando este 
+    compromiso explícitamente.
+
+    \item \textbf{Multi-Layer Perceptron (MLP):} Dos capas ocultas (256, 128), activación ReLU, \textit{dropout} 0.3 y regularización L2 ($\lambda = 10^{-4}$), entrenado por 100 épocas con 
+    Adam ($\text{lr} = 10^{-3}$) y \textit{early stopping} (paciencia 10).
+    Para MTAT, la función de pérdida es \textit{weighted binary cross-entropy}; para las demás tareas, \textit{cross-entropy} 
+    estándar.
 \end{itemize}
 
-Para GTZAN: validación cruzada estratificada de 10 folds.
+Para GTZAN: \textit{repeated} validación cruzada estratificada de $5 \times$10 folds para aumentar la potencia estadística de la prueba de Wilcoxon.
 Para FMA-small: particiones oficiales \textit{train/validation/test}.
 Para MTAT: partición estándar 12:1:3.
+Para IRMAS: partición oficial \textit{train/test} proporcionada por los autores del dataset \cite{bosch2012comparison}.
 
 \subsection{Métricas de evaluación}
 
 \begin{itemize}
-    \item \textbf{Clasificación de género} (GTZAN, FMA-small): Precisión global (\textit{accuracy}), \textit{F1 score} macro-promediado, y F1 por clase.
-    \item \textbf{\textit{Auto-tagging}} (MTAT): \textit{Mean average precision} (mAP), ROC-AUC macro-promediado, y AP por \textit{tag} para los 10 \textit{tags} más frecuentes.
+    \item \textbf{Clasificación de género} (GTZAN, FMA-small): Precisión global (\textit{accuracy}), \textit{F1 score} macro-promediado, y F1 por clase. El F1 macro es la métrica primaria para comparaciones entre representaciones, dado que es robusto ante 
+    desbalances menores entre géneros.
+
+    \item \textbf{\textit{Auto-tagging}} (MTAT): \textit{Mean average precision} (mAP), ROC-AUC macro-promediado, y AP por \textit{tag} para los 10 \textit{tags} más frecuentes. El mAP es la métrica primaria por ser el estándar de facto en la literatura de 
+    \textit{auto-tagging} \cite{law2009evaluation}.
+
+    \item \textbf{Reconocimiento de instrumentos} (IRMAS): \textit{Accuracy} global y F1 macro-promediado. Al ser una tarea de clasificación multi-clase balanceada, la \textit{accuracy} y el F1 macro son equivalentes y ambos se reportan para facilitar comparación 
+    con la literatura.
 \end{itemize}
 
-\subsection{Análisis de importancia de \textit{features} (RQ3)}
+\subsection{Análisis de importancia de \textit{features}}
 
-Para responder RQ3, analizamos la importancia de \textit{features} usando tres métodos complementarios:
+Para cuantificar la sensibilidad temporal de cada descriptor y responder RQ1 y RQ3, analizamos la importancia de \textit{features} usando tres métodos complementarios, ordenados de mayor a menor confiabilidad estadística:
 
 \begin{enumerate}
-    \item \textbf{\textit{Mean Decrease in Impurity} (MDI):} Desde Random Forest, promediado entre folds/particiones.
-    \item \textbf{\textit{Permutation Importance}:} Medición de la caída en \textit{accuracy} cuando cada \textit{feature} se permuta aleatoriamente, aplicada al mejor clasificador por tarea.
-    \item \textbf{Importancia condicionada por escala:} Para la representación \textit{multi-scale}, agrupamos las \textit{features} por su escala de origen ($s$, $m$, $l$) y calculamos la importancia agregada de cada escala. Además, calculamos la importancia de cada tipo de descriptor (MFCCs, \textit{chroma}, etc.) dentro de cada escala, produciendo una matriz de importancia $7 \times 3$ que revela qué descriptores se benefician más de qué resolución temporal.
+    \item \textbf{\textit{Permutation Importance} (PI):} Método principal. Mide la caída en F1 macro cuando cada \textit{feature} se permuta aleatoriamente 30 veces, aplicada al mejor clasificador por 
+    tarea. Al ser agnóstica a la estructura interna del modelo, es más confiable que MDI para comparar importancias entre descriptores de diferente dimensionalidad \cite{breiman2001random}.
+
+    \item \textbf{\textit{Mean Decrease in Impurity} (MDI):} 
+    Método secundario. Desde Random Forest, promediado entre folds/particiones . Se reporta como referencia comparativa dado su sesgo conocido hacia variables de alta cardinalidad, pero los rankings primarios se basan en PI.
+
+    \item \textbf{Importancia condicionada por escala:} Para la 
+    representación \textit{multi-scale}, agrupamos las \textit{features} por su escala de origen ($s$, $m$, $l$) y calculamos la importancia agregada de cada escala. Esta agregación se realiza 
+    tanto con PI como con MDI, reportando la media y el intervalo de confianza del 95\% mediante \textit{bootstrap} con 1\,000 remuestreos. Esto produce una matriz de importancia $7 \times 3$ que revela qué descriptores se benefician más de qué resolución temporal , 
+    y sirve como base empírica para la \textit{TSI-weighted fusion}.
 \end{enumerate}
 
 \subsection{Validación estadística}
 
-Todas las comparaciones entre representaciones \textit{single-scale} y \textit{multi-scale} se evalúan para significancia estadística usando la prueba de rangos con signo de Wilcoxon ($\alpha = 0.05$) aplicada a la \textit{accuracy} por fold (GTZAN) o al AP por \textit{tag} (MTAT).
-Los tamaños de efecto se reportan usando delta de Cliff.
-
-% ============================================================
-\section{Plan experimental y cronograma}
-
-Dada la restricción de un mes y acceso a Google Colab Pro, organizamos el trabajo en cuatro sprints semanales:
-
-\begin{table}[t]
-\centering
-\caption{Cronograma propuesto de 4 semanas.}
-\label{tab:timeline}
-\begin{tabular}{@{}cp{6.2cm}@{}}
-\toprule
-\textbf{Semana} & \textbf{Tareas} \\
-\midrule
-1 & Preparación de \textit{datasets} (descargar GTZAN y MTAT; verificar FMA-small). Implementar pipeline de extracción de \textit{features} a tres escalas. Extraer y almacenar en caché todas las \textit{features} en disco. \\
-\midrule
-2 & Entrenar y evaluar clasificadores \textit{single-scale} (RF, SVM, MLP) en los tres \textit{datasets}. Registrar métricas por fold/partición. \\
-\midrule
-3 & Entrenar y evaluar clasificadores con fusión \textit{multi-scale}. Ejecutar análisis de importancia de \textit{features}. Pruebas estadísticas. Ablación: combinaciones por pares de escalas ($s{+}m$, $s{+}l$, $m{+}l$). \\
-\midrule
-4 & Redacción de resultados y discusión. Generación de figuras y tablas. Compilación final del artículo y revisión. \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Requerimientos computacionales}
-
-La extracción de \textit{features} con \texttt{librosa} utiliza CPU y no requiere GPU.
-Para los tres \textit{datasets} combinados ($\sim$35\,000 pistas $\times$ 30\,s), la extracción a las tres escalas se estima en $\sim$8--12 horas de CPU en Colab Pro.
-Las \textit{features} se almacenarán en caché como arreglos NumPy ($\sim$150\,MB en total) para permitir iteración rápida sobre los clasificadores.
-El entrenamiento de RF y SVM requiere solo CPU.
-El entrenamiento del MLP sobre $\sim$35\,000 muestras con 576 \textit{features} es ligero y se completa en minutos por configuración.
-
-% ============================================================
-\section{Resultados esperados}
-
-Anticipamos los siguientes resultados:
-
-\begin{enumerate}
-    \item \textbf{Calidad de \textit{features} dependiente de la escala (RQ1):} Los MFCCs y el \textit{spectral centroid} alcanzarán su mayor \textit{accuracy single-scale} en la escala corta, porque la información tímbrica se captura en la forma espectral instantánea. \textit{Chroma} y \textit{tonnetz} alcanzarán su máximo en la escala media, donde las progresiones armónicas se hacen visibles. El \textit{spectral contrast} se beneficiará de ventanas más largas que exponen diferencias texturales sostenidas entre géneros.
-
-    \item \textbf{Ventaja \textit{multi-scale} (RQ2):} La representación \textit{multi-scale} concatenada superará a cada \textit{baseline single-scale} por 2--5 puntos porcentuales en \textit{accuracy} (clasificación de género) y 1--3 puntos en mAP (\textit{auto-tagging}), a través de todos los clasificadores. La mejora será mayor para tareas con semántica de etiquetas diversa (MTAT), donde los \textit{tags} abarcan atributos tímbricos, armónicos y estructurales.
-
-    \item \textbf{Cambios en importancia de \textit{features} (RQ3):} La matriz de importancia $7 \times 3$ mostrará una tendencia diagonal clara---\textit{features} tímbricas de escala corta dominando para \textit{tags} de percusión/instrumentos, \textit{features} tonales de escala media para género y \textit{mood}, y \textit{features} de contraste de escala larga para \textit{tags} estructurales. Esto validará la hipótesis de que diferentes propiedades musicales residen en diferentes resoluciones temporales.
-\end{enumerate}
-
-% ============================================================
-\section{Direcciones de discusión}
-
-Los resultados esperados abren varias líneas de discusión:
-
-\begin{itemize}
-    \item \textbf{Implicaciones para modelos \textit{deep}:} Si las \textit{features} artesanales simples ya se benefician de la extracción \textit{multi-scale}, esto proporciona fundamento empírico para las decisiones arquitectónicas en modelos \textit{deep} \textit{multi-scale} recientes \cite{buisson2024self, alonso2025omar}---su ventaja puede provenir parcialmente del procesamiento \textit{multi-scale} implícito y no solo de las representaciones aprendidas en sí.
-
-    \item \textbf{Guías prácticas:} Muchos sistemas MIR en producción aún usan \textit{features} artesanales por eficiencia \cite{tamm2024comparative}. Nuestro análisis proporcionará recomendaciones concretas sobre tamaños de ventana óptimos para cada descriptor y tarea.
-
-    \item \textbf{Limitaciones y trabajo futuro:} El estudio usa ventanas no superpuestas y concatenación simple. Trabajo futuro podría explorar ventanas superpuestas, fusión basada en atención, y la interacción entre \textit{features} artesanales \textit{multi-scale} y \textit{embeddings} \textit{deep} preentrenados (e.g., usando \textit{features} \textit{multi-scale} como entradas complementarias a modelos como OMAR-RQ \cite{alonso2025omar} o SemiSupCon \cite{guinot2024semi}).
-\end{itemize}
-
-% ============================================================
-\section{Conclusión}
-
-Esta propuesta describe un estudio empírico controlado para determinar si y cómo la escala temporal afecta la calidad de las \textit{audio features} artesanales para MIR.
-Al comparar sistemáticamente representaciones \textit{single-scale} y \textit{multi-scale} en clasificación de género y \textit{auto-tagging} con clasificadores estándar, buscamos proporcionar evidencia fundamental de que la fusión \textit{multi-scale} de \textit{features} captura información musical complementaria a través de las dimensiones tímbrica, armónica y estructural.
-El estudio está diseñado para ser reproducible, computacionalmente ligero, y directamente útil tanto para investigadores que diseñan nuevas arquitecturas de aprendizaje de representaciones como para profesionales que construyen sistemas MIR con recursos limitados.
+Todas las comparaciones entre representaciones \textit{single-scale} y \textit{multi-scale} se evalúan para significancia estadística usando la prueba de rangos con signo de Wilcoxon ($\alpha = 0.05$), con corrección de Bonferroni para comparaciones múltiples ($\alpha_{\text{corr}} = 0.05 / 6 = 0.0083$ para las seis comparaciones entre pares de representaciones), aplicada a la \textit{accuracy} por fold 
+(GTZAN) o al AP por \textit{tag} (MTAT e IRMAS).
+Los tamaños de efecto se reportan usando delta de Cliff con los umbrales estándar: pequeño $|\delta| \geq 0.147$, mediano $|\delta| \geq 0.33$, grande $|\delta| \geq 0.474$ \cite{romano2006exploring}.
+Adicionalmente, la consistencia de los rankings de TSI entre tareas se evalúa con el coeficiente de correlación de Spearman $\rho$, reportando el intervalo de confianza del 95\% mediante \textit{bootstrap}.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
