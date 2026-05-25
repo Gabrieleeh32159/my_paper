@@ -58,16 +58,17 @@ class SVMClassifier:
         self.model = None
 
     def fit(self, X: np.ndarray, y: np.ndarray):
+        # Fit scaler on full training data first (consistent statistics)
+        X_scaled = self.scaler.fit_transform(X)
+
         # Subsample for large datasets (e.g., MTAT)
         if self.subsample and len(X) > 5000:
             rng = np.random.RandomState(self.random_state)
             n_sub = int(len(X) * self.subsample)
             idx = rng.choice(len(X), n_sub, replace=False)
-            X_fit, y_fit = X[idx], y[idx]
+            X_fit, y_fit = X_scaled[idx], y[idx]
         else:
-            X_fit, y_fit = X, y
-
-        X_scaled = self.scaler.fit_transform(X_fit)
+            X_fit, y_fit = X_scaled, y
 
         # Grid search for C and gamma
         param_grid = {
@@ -80,12 +81,8 @@ class SVMClassifier:
             svm, param_grid, cv=3, scoring='f1_macro',
             n_jobs=-1, refit=True
         )
-        grid.fit(X_scaled, y_fit)
+        grid.fit(X_fit, y_fit)
         self.model = grid.best_estimator_
-
-        # Refit scaler on full data if subsampled
-        if self.subsample and len(X) > 5000:
-            self.scaler.fit(X)
 
         return self
 
