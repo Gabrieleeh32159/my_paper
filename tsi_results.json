@@ -1,0 +1,173 @@
+{
+  "gtzan": {
+    "tsi_scores": {
+      "mfcc": 1.0999999999999999,
+      "chroma": 0.7000000000000001,
+      "spectral_centroid": 0.7000000000000001,
+      "spectral_contrast": 0.6999999999999995,
+      "spectral_rolloff": 0.10000000000000009,
+      "zcr": 0.4999999999999999,
+      "tonnetz": 1.3999999999999995
+    },
+    "accuracy_matrix": {
+      "mfcc": {
+        "short": 0.65,
+        "medium": 0.6,
+        "long": 0.54
+      },
+      "chroma": {
+        "short": 0.43,
+        "medium": 0.47,
+        "long": 0.5
+      },
+      "spectral_centroid": {
+        "short": 0.31,
+        "medium": 0.36,
+        "long": 0.29
+      },
+      "spectral_contrast": {
+        "short": 0.59,
+        "medium": 0.52,
+        "long": 0.57
+      },
+      "spectral_rolloff": {
+        "short": 0.36,
+        "medium": 0.37,
+        "long": 0.37
+      },
+      "zcr": {
+        "short": 0.26,
+        "medium": 0.27,
+        "long": 0.31
+      },
+      "tonnetz": {
+        "short": 0.57,
+        "medium": 0.46,
+        "long": 0.43
+      }
+    },
+    "optimal_scales": {
+      "mfcc": "short",
+      "chroma": "long",
+      "spectral_centroid": "medium",
+      "spectral_contrast": "short",
+      "spectral_rolloff": "medium",
+      "zcr": "long",
+      "tonnetz": "short"
+    }
+  },
+  "fma_small": {
+    "tsi_scores": {
+      "mfcc": 0.19999999999999973,
+      "chroma": 0.20000000000000018,
+      "spectral_centroid": 0.18000000000000016,
+      "spectral_contrast": 0.2200000000000002,
+      "spectral_rolloff": 0.10000000000000009,
+      "zcr": 0.05999999999999983,
+      "tonnetz": 0.3200000000000003
+    },
+    "accuracy_matrix": {
+      "mfcc": {
+        "short": 0.415,
+        "medium": 0.39625,
+        "long": 0.39
+      },
+      "chroma": {
+        "short": 0.375,
+        "medium": 0.3675,
+        "long": 0.35
+      },
+      "spectral_centroid": {
+        "short": 0.275,
+        "medium": 0.2525,
+        "long": 0.265
+      },
+      "spectral_contrast": {
+        "short": 0.395,
+        "medium": 0.3675,
+        "long": 0.38
+      },
+      "spectral_rolloff": {
+        "short": 0.2575,
+        "medium": 0.2475,
+        "long": 0.245
+      },
+      "zcr": {
+        "short": 0.2325,
+        "medium": 0.2375,
+        "long": 0.23
+      },
+      "tonnetz": {
+        "short": 0.35625,
+        "medium": 0.31625,
+        "long": 0.31625
+      }
+    },
+    "optimal_scales": {
+      "mfcc": "short",
+      "chroma": "short",
+      "spectral_centroid": "short",
+      "spectral_contrast": "short",
+      "spectral_rolloff": "short",
+      "zcr": "medium",
+      "tonnetz": "short"
+    }
+  },
+  "irmas": {
+    "tsi_scores": {
+      "mfcc": 0.5179677819083024,
+      "chroma": 0.3271375464684016,
+      "spectral_centroid": 0.2998760842627012,
+      "spectral_contrast": 0.36802973977695164,
+      "spectral_rolloff": 0.1635687732342008,
+      "zcr": 0.19083023543990077,
+      "tonnetz": 0.6679058240396528
+    },
+    "accuracy_matrix": {
+      "mfcc": {
+        "short": 0.15613382899628253,
+        "medium": 0.20322180916976457,
+        "long": 0.18711276332094176
+      },
+      "chroma": {
+        "short": 0.13382899628252787,
+        "medium": 0.11648079306071871,
+        "long": 0.14622057001239158
+      },
+      "spectral_centroid": {
+        "short": 0.12639405204460966,
+        "medium": 0.11028500619578686,
+        "long": 0.09913258983890955
+      },
+      "spectral_contrast": {
+        "short": 0.1697645600991326,
+        "medium": 0.20322180916976457,
+        "long": 0.1970260223048327
+      },
+      "spectral_rolloff": {
+        "short": 0.12763320941759604,
+        "medium": 0.11400247831474597,
+        "long": 0.1127633209417596
+      },
+      "zcr": {
+        "short": 0.13630731102850063,
+        "medium": 0.14745972738537794,
+        "long": 0.13011152416356878
+      },
+      "tonnetz": {
+        "short": 0.21685254027261464,
+        "medium": 0.2255266418835192,
+        "long": 0.16480793060718713
+      }
+    },
+    "optimal_scales": {
+      "mfcc": "medium",
+      "chroma": "long",
+      "spectral_centroid": "short",
+      "spectral_contrast": "medium",
+      "spectral_rolloff": "short",
+      "zcr": "medium",
+      "tonnetz": "medium"
+    }
+  }
+}

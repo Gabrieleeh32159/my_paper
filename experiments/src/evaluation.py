@@ -131,6 +131,27 @@ def run_full_evaluation(
     """
     from .fusion import single_scale, early_fusion, late_fusion, tsi_weighted_fusion
 
+    def _align_proba_columns(
+        proba: np.ndarray,
+        predicted_classes: Optional[np.ndarray],
+        class_order: np.ndarray,
+    ) -> np.ndarray:
+        """Align probability columns to a shared class order."""
+        if predicted_classes is None:
+            # MLP wrappers already output fixed class order [0..n_classes-1].
+            if proba.shape[1] != len(class_order):
+                raise ValueError(
+                    f"Probability columns ({proba.shape[1]}) do not match class order size ({len(class_order)})."
+                )
+            return proba
+
+        aligned = np.zeros((proba.shape[0], len(class_order)), dtype=proba.dtype)
+        class_to_pos = {c: i for i, c in enumerate(class_order.tolist())}
+        for src_col, cls in enumerate(predicted_classes.tolist()):
+            if cls in class_to_pos:
+                aligned[:, class_to_pos[cls]] = proba[:, src_col]
+        return aligned
+
     if strategy in ('short', 'medium', 'long'):
         X = single_scale(features, strategy)
         X_train, X_test = X[train_idx], X[test_idx]
@@ -163,6 +184,7 @@ def run_full_evaluation(
         # Train separate classifiers per scale, average predictions
         predictions = {}
         y_test = labels[test_idx]
+        class_order = np.sort(np.unique(labels))
 
         for scale_name in ['short', 'medium', 'long']:
             X_scale = features[scale_name]
@@ -174,14 +196,18 @@ def run_full_evaluation(
             from copy import deepcopy
             clf_scale = deepcopy(classifier)
             clf_scale.fit(X_train, y_train)
-            predictions[scale_name] = clf_scale.predict_proba(X_test)
+            proba = clf_scale.predict_proba(X_test)
+            classes_ = None
+            if hasattr(clf_scale, 'model') and hasattr(clf_scale.model, 'classes_'):
+                classes_ = clf_scale.model.classes_
+            predictions[scale_name] = _align_proba_columns(proba, classes_, class_order)
 
         avg_proba = late_fusion(predictions)
 
         if task_type == 'multilabel':
             return evaluate_multilabel(y_test, avg_proba, class_names)
         else:
-            y_pred = np.argmax(avg_proba, axis=1)
+            y_pred = class_order[np.argmax(avg_proba, axis=1)]
             return evaluate_multiclass(y_test, y_pred, class_names)
 
     elif strategy == 'tsi_weighted':

@@ -1,7 +1,7 @@
 """
 Classifier wrappers for TSI experiments.
 
-Implements: Random Forest, SVM (RBF), MLP.
+Implements: Random Forest, XGBoost, SVM (RBF), MLP.
 All classifiers follow a common interface for easy swapping.
 """
 
@@ -11,6 +11,7 @@ from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
 from typing import Optional
+from xgboost import XGBClassifier as _XGBClassifier
 
 import torch
 import torch.nn as nn
@@ -27,6 +28,41 @@ class RFClassifier:
             max_depth=max_depth,
             random_state=random_state,
             n_jobs=-1
+        )
+        self.scaler = StandardScaler()
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        X_scaled = self.scaler.fit_transform(X)
+        self.model.fit(X_scaled, y)
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        X_scaled = self.scaler.transform(X)
+        return self.model.predict(X_scaled)
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        X_scaled = self.scaler.transform(X)
+        return self.model.predict_proba(X_scaled)
+
+    @property
+    def feature_importances_(self):
+        return self.model.feature_importances_
+
+
+class XGBoostClassifier:
+    """XGBoost classifier with sensible defaults."""
+
+    def __init__(self, n_estimators: int = 500, max_depth: int = 6,
+                 learning_rate: float = 0.1, random_state: int = 42):
+        self.model = _XGBClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            random_state=random_state,
+            n_jobs=-1,
+            eval_metric='mlogloss',
+            use_label_encoder=False,
+            verbosity=0,
         )
         self.scaler = StandardScaler()
 
@@ -269,9 +305,11 @@ def get_classifier(name: str, input_dim: int, n_classes: int,
     """
     if name == 'rf':
         return RFClassifier(**kwargs)
+    elif name == 'xgb':
+        return XGBoostClassifier(**kwargs)
     elif name == 'svm':
         return SVMClassifier(**kwargs)
     elif name == 'mlp':
         return MLPClassifier(n_classes=n_classes, task_type=task_type, **kwargs)
     else:
-        raise ValueError(f"Unknown classifier: {name}. Choose from ['rf', 'svm', 'mlp']")
+        raise ValueError(f"Unknown classifier: {name}. Choose from ['rf', 'xgb', 'svm', 'mlp']")
