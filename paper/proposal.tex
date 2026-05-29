@@ -54,8 +54,7 @@ Lima, Per\'u \\
 % ============================================================
 \begin{abstract}
 Las \textit{audio features} artesanales como MFCCs, \textit{chroma} y descriptores espectrales siguen siendo ampliamente utilizadas en pipelines de \textit{Music Information Retrieval} (MIR), especialmente 
-en contextos con recursos computacionales limitados donde el \textit{deep learning} no es viable. Sin embargo, la ventana temporal sobre la cual se agregan estas \textit{features} se elige típicamente por convención --- usualmente 1\,s o la duración completa del clip --- sin justificación acústica ni evidencia empírica  comparativa\textcolor{black}{.} Este trabajo introduce el \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica que cuantifica 
-cuánto varía la discriminabilidad de cada descriptor según la escala temporal de extracción, y lo utiliza para construir estrategias de fusión informadas por datos. Extraemos siete descriptores canónicos a tres 
+en contextos con recursos computacionales limitados donde el \textit{deep learning} no es viable. Sin embargo, la ventana temporal sobre la cual se agregan estas \textit{features} se elige típicamente por convención --- usualmente 1\,s o la duración completa del clip --- sin justificación acústica ni evidencia empírica  comparativa\textcolor{black}{.} Este trabajo introduce el \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica basada en ganancia de información normalizada que cuantifica cuánto varía la discriminabilidad de cada descriptor según la escala temporal de extracción, y lo utiliza para construir estrategias de fusión informadas por datos. Extraemos siete descriptores canónicos a tres 
 resoluciones temporales---corta ($\sim$200\,ms), media ($\sim$2\,s) y larga ($\sim$5\,s), justificadas por principios psicoacústicos,---y evaluamos cuatro estrategias de fusión (\textit{single-scale}, 
 \textit{early}, \textit{late} y \textit{TSI-weighted fusion}) en tres tareas: clasificación de género (GTZAN, FMA-small) y \textit{auto-tagging} (MagnaTagATune), y reconocimiento de 
 instrumentos (IRMAS). El TSI permite construir una matriz de sensibilidad descriptor~$\times$~escala (7$\times$3) que sirve como referencia 
@@ -340,30 +339,52 @@ Las cuatro representaciones comparadas son:
         \text{TSI}(f_7)\mathbf{x}_{k^*(f_7)}]
 \end{align}
 
-donde $k^*(f)= \arg\max_k \text{Acc}(f,k)$ es la escala óptima para el descriptor $f$ según su TSI, y $\hat{p}_k$ es la probabilidad predicha por el clasificador entrenado en la escala $k$.
+donde $k^*(f)= \arg\max_k G(f,k)$ es la escala óptima para el descriptor $f$ (la que maximiza la ganancia de información normalizada), y $\hat{p}_k$ es la probabilidad predicha por el clasificador entrenado en la escala $k$.
 
 Todas las \textit{features} se estandarizan (media cero, varianza unitaria) usando estadísticas calculadas solo en el conjunto de entrenamiento.
 
 \subsection{Índice de Sensibilidad Temporal (TSI)}
 
-El TSI es la contribución metodológica central de este trabajo. Para cada descriptor $f \in \{\text{MFCCs, Chroma, SC, SContrast, SR, ZCR, Tonnetz}\}$, definimos:
+El TSI es la contribución metodológica central de este trabajo.
+Para cada descriptor $f \in \{\text{MFCCs, Chroma, SC, SContrast, SR, ZCR, Tonnetz}\}$ y escala $k \in \{s, m, l\}$, definimos primero la \textbf{ganancia de información normalizada}:
 
 \begin{equation}
-    \text{TSI}(f) = \frac{\max_{k \in \{s,m,l\}} \text{Acc}(f, k) - 
-    \min_{k \in \{s,m,l\}} \text{Acc}(f, k)}{\text{Acc}_{\text{chance}}}
+    G(f, k) = 1 - \frac{L(f, k)}{L_{\text{chance}}}
+    \label{eq:gain}
+\end{equation}
+
+\noindent donde $L(f, k)$ es la \textit{log-loss} de un clasificador calibrado entrenado únicamente con el descriptor $f$ a la escala $k$, y $L_{\text{chance}}$ es la \textit{log-loss} del predictor constante de clase mayoritaria:
+
+\begin{equation}
+    L_{\text{chance}} = \begin{cases}
+        \log C & \text{(multiclase, } C \text{ clases uniformes)} \\[4pt]
+        \dfrac{1}{T}\sum_{t=1}^{T} H(\pi_t) & \text{(multietiqueta, MTAT)}
+    \end{cases}
+    \label{eq:lchance}
+\end{equation}
+
+\noindent con $H(\pi_t) = -\pi_t \log \pi_t - (1-\pi_t)\log(1-\pi_t)$ la entropía binaria de la prevalencia $\pi_t$ del \textit{tag} $t$ en el conjunto de entrenamiento.
+
+$G(f,k)$ mide qué fracción de la incertidumbre de etiqueta resuelve el descriptor $f$ a la escala $k$: vale $0$ cuando el clasificador no mejora al azar y tiende a $1$ bajo calibración perfecta.
+La \textbf{escala óptima} del descriptor $f$ es $k^*(f) = \arg\max_k G(f,k)$.
+
+El \textbf{Índice de Sensibilidad Temporal} se define como el rango de $G$ entre escalas:
+
+\begin{equation}
+    \text{TSI}(f) = \max_{k} G(f, k) - \min_{k} G(f, k)
     \label{eq:tsi}
 \end{equation}
 
-\noindent donde $\text{Acc}(f, k)$ es la precisión de clasificación obtenida usando 
-únicamente el descriptor $f$ extraído a la escala $k$, y 
-$\text{Acc}_{\text{chance}} = 1/C$ es la precisión de nivel aleatorio para $C$ clases.
+Un $\text{TSI}(f) = 0$ indica que el descriptor $f$ rinde igual en todas las escalas (\textit{temporalmente robusto}); un TSI alto indica que la discriminabilidad depende fuertemente de la escala de extracción (\textit{temporalmente sensible}).
+La interpretación en términos de información es directa: $\text{TSI}(f)$ es la fracción adicional de incertidumbre de etiqueta que se resuelve al elegir la mejor escala en lugar de la peor para el descriptor $f$.
 
-La normalización por $\text{Acc}_{\text{chance}}$ hace al TSI comparable entre tareas con diferente número de clases. Un $\text{TSI}(f) = 0$ indica que el descriptor $f$ rinde igual en todas las escalas (\textit{temporalmente robusto}); un TSI alto indica que la discriminabilidad del descriptor depende fuertemente de la escala de extracción (\textit{temporalmente sensible}).
+La \textbf{calibración} es indispensable para que $G \in [0,1]$: XGBoost y Random Forest se calibran con \texttt{CalibratedClassifierCV} (sigmoide, 3 folds); SVM mediante escalado de Platt (\texttt{probability=True}); MLP mediante \textit{temperature scaling} ajustado en el conjunto de validación.
 
-El TSI se computa por separado para cada tarea y clasificador. La consistencia del TSI entre tareas y clasificadores se evalúa mediante el coeficiente de correlación de Spearman $\rho$ entre los rankings de TSI obtenidos en diferentes configuraciones, con $\rho > 0.7$ como umbral para 
-afirmar consistencia.
+La \textbf{validación estadística por descriptor} se realiza mediante la prueba de Wilcoxon pareada sobre los valores $G(f, k^*)$ y $G(f, k_{\min})$ obtenidos fold a fold ($\alpha = 0.05$). Solo se reporta un descriptor como temporalmente sensible si esta prueba resulta significativa. La incertidumbre del TSI se cuantifica mediante un intervalo de confianza \textit{bootstrap} del 95\% (1\,000 remuestreos sobre folds).
 
-Los resultados se visualizan como una \textbf{matriz de sensibilidad $7 \times 3$} (descriptores $\times$ escalas) donde cada celda contiene $\text{Acc}(f, k)$ normalizada, permitiendo identificar visualmente qué descriptor se beneficia de qué escala.
+Los resultados se visualizan como una \textbf{matriz de sensibilidad $7 \times 3$} (descriptores $\times$ escalas) donde cada celda contiene $G(f, k) \pm \sigma$, permitiendo identificar visualmente qué descriptor se beneficia de qué escala y con qué variabilidad entre folds.
+
+La consistencia del TSI entre tareas y clasificadores se evalúa mediante el coeficiente de correlación de Spearman $\rho$ entre rankings, con $\rho > 0.7$ como umbral para afirmar consistencia.
 
 \subsection{Modelos de clasificación}
 
@@ -371,17 +392,15 @@ Para asegurar que las diferencias observadas sean atribuibles a las \textit{feat
 clasificador \cite{tamm2024comparative}:
 
 \begin{itemize}
-    \item \textbf{Random Forest (RF):} 500 árboles, profundidad máxima 30. Proporciona importancia de \textit{features} integrada mediante \textit{mean decrease in impurity} (MDI). Es el clasificador principal para el cómputo del TSI por su robustez ante \textit{features} de alta dimensión y su capacidad nativa de medir 
-    importancia sin costo adicional.
+    \item \textbf{XGBoost:} Clasificador principal para el cómputo del TSI. Se calibra con \texttt{CalibratedClassifierCV} (sigmoide, 3 folds) para garantizar que las probabilidades sean fieles y la \textit{log-loss} sea interpretable como información. Su robustez ante \textit{features} de alta dimensión y su convergencia rápida lo hacen adecuado para la validación cruzada repetida requerida por el TSI.
 
-    \item \textbf{Support Vector Machine (SVM):} Kernel RBF, hiperparámetros ($C$, $\gamma$) ajustados mediante validación cruzada de 3 folds en el conjunto de entrenamiento. Para la representación 
-    \textit{early fusion} ($\mathbb{R}^{576}$), el entrenamiento se realiza con submuestreo aleatorio del 50\% de las pistas de entrenamiento en MTAT para mantener tiempos de cómputo manejables, reportando este 
+    \item \textbf{Random Forest (RF):} 500 árboles, profundidad máxima 30; calibrado con \texttt{CalibratedClassifierCV} (sigmoide, 3 folds). Proporciona importancia de \textit{features} integrada mediante \textit{mean decrease in impurity} (MDI) y se usa como verificación de que los resultados del TSI no dependen del clasificador.
+
+    \item \textbf{Support Vector Machine (SVM):} Kernel RBF, hiperparámetros ($C$, $\gamma$) ajustados mediante validación cruzada de 3 folds; calibrado via escalado de Platt (\texttt{probability=True}). Para la representación \textit{early fusion} ($\mathbb{R}^{576}$), el entrenamiento se realiza con submuestreo aleatorio del 50\% de las pistas de entrenamiento en MTAT para mantener tiempos de cómputo manejables, reportando este
     compromiso explícitamente.
 
-    \item \textbf{Multi-Layer Perceptron (MLP):} Dos capas ocultas (256, 128), activación ReLU, \textit{dropout} 0.3 y regularización L2 ($\lambda = 10^{-4}$), entrenado por 100 épocas con 
-    Adam ($\text{lr} = 10^{-3}$) y \textit{early stopping} (paciencia 10).
-    Para MTAT, la función de pérdida es \textit{weighted binary cross-entropy}; para las demás tareas, \textit{cross-entropy} 
-    estándar.
+    \item \textbf{Multi-Layer Perceptron (MLP):} Dos capas ocultas (256, 128), activación ReLU, \textit{dropout} 0.3 y regularización L2 ($\lambda = 10^{-4}$), entrenado por 100 épocas con Adam ($\text{lr} = 10^{-3}$) y \textit{early stopping} (paciencia 10); calibrado mediante \textit{temperature scaling} ajustado en el conjunto de validación.
+    Para MTAT, la función de pérdida es \textit{weighted binary cross-entropy}; para las demás tareas, \textit{cross-entropy} estándar.
 \end{itemize}
 
 Para GTZAN: \textit{repeated} validación cruzada estratificada de $5 \times$10 folds para aumentar la potencia estadística de la prueba de Wilcoxon.
@@ -421,10 +440,13 @@ Para cuantificar la sensibilidad temporal de cada descriptor y responder RQ1 y R
 
 \subsection{Validación estadística}
 
-Todas las comparaciones entre representaciones \textit{single-scale} y \textit{multi-scale} se evalúan para significancia estadística usando la prueba de rangos con signo de Wilcoxon ($\alpha = 0.05$), con corrección de Bonferroni para comparaciones múltiples ($\alpha_{\text{corr}} = 0.05 / 6 = 0.0083$ para las seis comparaciones entre pares de representaciones), aplicada a la \textit{accuracy} por fold 
-(GTZAN) o al AP por \textit{tag} (MTAT e IRMAS).
-Los tamaños de efecto se reportan usando delta de Cliff con los umbrales estándar: pequeño $|\delta| \geq 0.147$, mediano $|\delta| \geq 0.33$, grande $|\delta| \geq 0.474$ \cite{romano2006exploring}.
-Adicionalmente, la consistencia de los rankings de TSI entre tareas se evalúa con el coeficiente de correlación de Spearman $\rho$, reportando el intervalo de confianza del 95\% mediante \textit{bootstrap}.
+La validación estadística opera en dos niveles.
+
+\textbf{Por descriptor (sensibilidad temporal):} Para cada descriptor $f$, se aplica la prueba de Wilcoxon pareada sobre los vectores fold a fold de $G(f, k^*)$ y $G(f, k_{\min})$. Un descriptor se reporta como temporalmente sensible únicamente si esta prueba resulta significativa ($\alpha = 0.05$). La incertidumbre del TSI se cuantifica con un IC \textit{bootstrap} del 95\% (1\,000 remuestreos sobre folds).
+
+\textbf{Entre estrategias de fusión:} Las comparaciones entre las cuatro estrategias (\textit{single-scale}, \textit{early}, \textit{late} y \textit{TSI-weighted}) se evalúan con la prueba de Wilcoxon sobre las métricas por fold, con corrección de Bonferroni para las seis comparaciones por pares ($\alpha_{\text{corr}} = 0.05/6 = 0.0083$). Los tamaños de efecto se reportan con delta de Cliff: pequeño $|\delta| \geq 0.147$, mediano $|\delta| \geq 0.33$, grande $|\delta| \geq 0.474$ \cite{romano2006exploring}.
+
+La consistencia de los rankings de TSI entre tareas y clasificadores se evalúa con el coeficiente de correlación de Spearman $\rho$ (IC 95\% \textit{bootstrap}), con $\rho > 0.7$ como umbral para afirmar que los patrones reflejan propiedades intrínsecas de los descriptores y no artefactos del clasificador o del \textit{dataset}.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
