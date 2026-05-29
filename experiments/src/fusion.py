@@ -8,6 +8,24 @@ import numpy as np
 from typing import Dict
 from .features import FEATURE_DIMS
 
+# Pre-compute and cache descriptor column indices for the 192-d track vector.
+# extract_descriptor_from_track_vector() is called 21×(n_folds) times per TSI
+# run; caching avoids recomputing the same index arithmetic on every call.
+_DESCRIPTOR_INDICES: Dict[str, list] = {}
+
+def _build_descriptor_index(descriptor_name: str) -> list:
+    offset = 0
+    for name, dim in FEATURE_DIMS.items():
+        if name == descriptor_name:
+            break
+        offset += dim
+    dim = FEATURE_DIMS[descriptor_name]
+    block_size = sum(FEATURE_DIMS.values())
+    indices = []
+    for block_start in [0, block_size, 2 * block_size, 3 * block_size]:
+        indices.extend(range(block_start + offset, block_start + offset + dim))
+    return indices
+
 
 def single_scale(features: Dict[str, np.ndarray], scale: str) -> np.ndarray:
     """
@@ -131,21 +149,9 @@ def extract_descriptor_from_track_vector(
     np.ndarray
         Extracted descriptor features (n_samples, 4*dim).
     """
-    # Find offset of this descriptor within the 48-d block
-    offset = 0
-    for name, dim in FEATURE_DIMS.items():
-        if name == descriptor_name:
-            break
-        offset += dim
-
-    dim = FEATURE_DIMS[descriptor_name]
-    block_size = sum(FEATURE_DIMS.values())  # 48
-
-    # Extract from all 4 statistics blocks
-    indices = []
-    for block_start in [0, block_size, 2 * block_size, 3 * block_size]:
-        indices.extend(range(block_start + offset, block_start + offset + dim))
-
+    if descriptor_name not in _DESCRIPTOR_INDICES:
+        _DESCRIPTOR_INDICES[descriptor_name] = _build_descriptor_index(descriptor_name)
+    indices = _DESCRIPTOR_INDICES[descriptor_name]
     if X.ndim == 1:
         return X[indices]
     return X[:, indices]

@@ -7,14 +7,18 @@ the thresholded accuracy:
 
     G(f, k) = 1 - L(f, k) / L_chance
 
-    TSI(f) = max_k G(f, k) - min_k G(f, k)
+    TSI(f) = std_k G(f, k)   [population std, ddof=0]
 
 where L(f, k) is the (clipped) log-loss of a calibrated classifier trained on
 descriptor f alone at scale k, and L_chance is the log-loss of the constant
 class-prior predictor. Because G is the fraction of label uncertainty resolved,
-the TSI is the share of resolvable label information that is gained or lost by
-choosing the best vs. worst temporal scale for that descriptor -- a proper,
-imbalance-aware, calibration-aware replacement for the accuracy-range TSI.
+the TSI is the RMS deviation of the information gain across scales — a measure
+of how much the discriminability of the descriptor varies with temporal scale.
+
+Using std instead of range ensures all K scales contribute to the index, not
+just the two extremes, making TSI less sensitive to a single outlier scale and
+able to distinguish descriptors with identical range but different intermediate
+behaviour.
 
 The optimal scale is k*(f) = argmax_k G(f, k) = argmin_k L(f, k).
 """
@@ -140,7 +144,7 @@ def compute_tsi(
             desc_gains[scale_name] = g
 
         info_gain_matrix[desc_name] = desc_gains
-        tsi_scores[desc_name] = max(desc_gains.values()) - min(desc_gains.values())
+        tsi_scores[desc_name] = float(np.std(list(desc_gains.values()), ddof=0))
         optimal_scales[desc_name] = max(desc_gains, key=desc_gains.get)
 
     return tsi_scores, info_gain_matrix, optimal_scales
@@ -155,27 +159,41 @@ def _accumulate_cv_info_gain(
     task_type: str,
     **clf_kwargs,
 ) -> Dict[str, Dict[str, List[float]]]:
-    """Collect per-fold information gain G(f, k) for every descriptor and scale."""
+    """Collect per-fold information gain G(f, k) for every descriptor and scale.
+
+    The 21 (descriptor, scale) pairs within each fold are trained in parallel
+    using joblib threads. Thread-based parallelism works well here because
+    XGBoost/sklearn release the GIL for their C++ internals, and GPU classifiers
+    share the CUDA context across threads without extra setup cost.
+    n_jobs is capped at the number of descriptors (7) to avoid GPU memory pressure.
+    """
+    from joblib import Parallel, delayed
+
     g_accum = {desc: {scale: [] for scale in SCALES.keys()}
                for desc in FEATURE_DIMS.keys()}
 
+    pairs = [
+        (desc_name, scale_name)
+        for desc_name in FEATURE_DIMS.keys()
+        for scale_name in SCALES.keys()
+    ]
+
     for train_idx, test_idx in folds:
         y_train = labels[train_idx]
-        if task_type == 'multilabel':
-            prior = tag_prevalence(y_train)
-        else:
-            prior = class_prior(y_train, n_classes)
+        prior = (tag_prevalence(y_train) if task_type == 'multilabel'
+                 else class_prior(y_train, n_classes))
 
-        for desc_name in FEATURE_DIMS.keys():
-            for scale_name in SCALES.keys():
-                X_desc = extract_descriptor_from_track_vector(
-                    features[scale_name], desc_name
-                )
-                g, _ = _descriptor_info_gain(
-                    X_desc, labels, train_idx, test_idx, n_classes,
-                    classifier_name, task_type, prior, **clf_kwargs
-                )
-                g_accum[desc_name][scale_name].append(g)
+        results = Parallel(n_jobs=len(FEATURE_DIMS), prefer='threads')(
+            delayed(_descriptor_info_gain)(
+                extract_descriptor_from_track_vector(features[scale_name], desc_name),
+                labels, train_idx, test_idx, n_classes,
+                classifier_name, task_type, prior, **clf_kwargs
+            )
+            for desc_name, scale_name in pairs
+        )
+
+        for (desc_name, scale_name), (g, _) in zip(pairs, results):
+            g_accum[desc_name][scale_name].append(g)
 
     return g_accum
 
@@ -215,7 +233,7 @@ def compute_tsi_cv(
             for scale in SCALES.keys()
         }
         info_gain_matrix[desc_name] = desc_gains
-        tsi_scores[desc_name] = max(desc_gains.values()) - min(desc_gains.values())
+        tsi_scores[desc_name] = float(np.std(list(desc_gains.values()), ddof=0))
         optimal_scales[desc_name] = max(desc_gains, key=desc_gains.get)
 
     return tsi_scores, info_gain_matrix, optimal_scales
@@ -273,7 +291,7 @@ def compute_tsi_cv_full(
         ci = tsi_bootstrap_ci(per_fold, n_bootstrap=n_bootstrap)
         sig = tsi_scale_significance(per_fold[best], per_fold[worst], alpha=alpha)
 
-        result['tsi_scores'][desc_name] = mean_gains[best] - mean_gains[worst]
+        result['tsi_scores'][desc_name] = float(np.std(list(mean_gains.values()), ddof=0))
         result['tsi_std'][desc_name] = ci['tsi_std']
         result['tsi_ci'][desc_name] = [ci['ci_lower'], ci['ci_upper']]
         result['info_gain_matrix'][desc_name] = mean_gains

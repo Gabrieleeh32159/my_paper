@@ -288,26 +288,24 @@ def run_full_evaluation(
             return evaluate_multiclass(y_test, y_pred, class_names)
 
     elif strategy == 'late':
-        # Train separate classifiers per scale, average predictions
-        predictions = {}
+        from copy import deepcopy
+        from joblib import Parallel, delayed
+
         y_test = labels[test_idx]
         class_order = np.sort(np.unique(labels))
 
-        for scale_name in ['short', 'medium', 'long']:
+        def _train_scale(scale_name):
             X_scale = features[scale_name]
-            X_train = X_scale[train_idx]
-            X_test = X_scale[test_idx]
-            y_train = labels[train_idx]
-
-            # Need fresh classifier per scale
-            from copy import deepcopy
             clf_scale = deepcopy(classifier)
-            clf_scale.fit(X_train, y_train)
-            proba = clf_scale.predict_proba(X_test)
-            classes_ = None
-            if hasattr(clf_scale, 'model') and hasattr(clf_scale.model, 'classes_'):
-                classes_ = clf_scale.model.classes_
-            predictions[scale_name] = _align_proba_columns(proba, classes_, class_order)
+            clf_scale.fit(X_scale[train_idx], labels[train_idx])
+            proba = clf_scale.predict_proba(X_scale[test_idx])
+            classes_ = getattr(getattr(clf_scale, 'model', None), 'classes_', None)
+            return scale_name, _align_proba_columns(proba, classes_, class_order)
+
+        scale_results = Parallel(n_jobs=3, prefer='threads')(
+            delayed(_train_scale)(s) for s in ['short', 'medium', 'long']
+        )
+        predictions = dict(scale_results)
 
         avg_proba = late_fusion(predictions)
 

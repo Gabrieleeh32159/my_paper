@@ -368,15 +368,18 @@ Para cada descriptor $f \in \{\text{MFCCs, Chroma, SC, SContrast, SR, ZCR, Tonne
 $G(f,k)$ mide qué fracción de la incertidumbre de etiqueta resuelve el descriptor $f$ a la escala $k$: vale $0$ cuando el clasificador no mejora al azar y tiende a $1$ bajo calibración perfecta.
 La \textbf{escala óptima} del descriptor $f$ es $k^*(f) = \arg\max_k G(f,k)$.
 
-El \textbf{Índice de Sensibilidad Temporal} se define como el rango de $G$ entre escalas:
+El \textbf{Índice de Sensibilidad Temporal} se define como la desviación estándar de $G$ entre escalas:
 
 \begin{equation}
-    \text{TSI}(f) = \max_{k} G(f, k) - \min_{k} G(f, k)
+    \text{TSI}(f) = \sqrt{\frac{1}{K}\sum_{k=1}^{K}\bigl(G(f,k) - \bar{G}(f)\bigr)^{2}}
     \label{eq:tsi}
 \end{equation}
 
-Un $\text{TSI}(f) = 0$ indica que el descriptor $f$ rinde igual en todas las escalas (\textit{temporalmente robusto}); un TSI alto indica que la discriminabilidad depende fuertemente de la escala de extracción (\textit{temporalmente sensible}).
-La interpretación en términos de información es directa: $\text{TSI}(f)$ es la fracción adicional de incertidumbre de etiqueta que se resuelve al elegir la mejor escala en lugar de la peor para el descriptor $f$.
+\noindent donde $\bar{G}(f) = \frac{1}{K}\sum_k G(f,k)$ es la ganancia media del descriptor $f$ entre las $K=3$ escalas.
+
+Un $\text{TSI}(f) = 0$ indica que el descriptor rinde igual en todas las escalas (\textit{temporalmente robusto}); un TSI alto indica que la discriminabilidad varía con la escala (\textit{temporalmente sensible}).
+A diferencia de un índice basado en rango, esta formulación utiliza las $K$ escalas conjuntamente: dos descriptores con idéntico rango pero distintos perfiles intermedios obtienen valores de TSI diferentes, capturando así descriptores con sensibilidad difusa frente a descriptores con un único salto concentrado entre dos escalas.
+La cota natural es $\text{TSI}(f) \in [0,\, \tfrac{1}{2}\,\text{rango}(G)]$, con el mínimo cuando el punto intermedio es equidistante a los extremos.
 
 La \textbf{calibración} es indispensable para que $G \in [0,1]$: XGBoost y Random Forest se calibran con \texttt{CalibratedClassifierCV} (sigmoide, 3 folds); SVM mediante escalado de Platt (\texttt{probability=True}); MLP mediante \textit{temperature scaling} ajustado en el conjunto de validación.
 

@@ -77,17 +77,11 @@ def cliffs_delta(x: np.ndarray, y: np.ndarray) -> Tuple[float, str]:
     -------
     Tuple of (delta_value, magnitude_label).
     """
-    n_x, n_y = len(x), len(y)
-    dominance = 0
-
-    for xi in x:
-        for yj in y:
-            if xi > yj:
-                dominance += 1
-            elif xi < yj:
-                dominance -= 1
-
-    delta = dominance / (n_x * n_y)
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    diff = x[:, None] - y[None, :]          # (n_x, n_y) broadcast
+    dominance = int((diff > 0).sum()) - int((diff < 0).sum())
+    delta = dominance / (len(x) * len(y))
 
     # Classify magnitude
     abs_delta = abs(delta)
@@ -161,8 +155,9 @@ def tsi_bootstrap_ci(
     """
     Bootstrap confidence interval for a descriptor's TSI by resampling folds.
 
-    The TSI is range_k of the per-scale mean information gain. Resampling the
-    folds (rows) and recomputing the range yields its sampling distribution.
+    The TSI is std_k of the per-scale mean information gain (population std,
+    ddof=0). Resampling the folds (rows) and recomputing the std yields its
+    sampling distribution.
 
     Parameters
     ----------
@@ -182,18 +177,15 @@ def tsi_bootstrap_ci(
     n_folds = matrix.shape[0]
 
     point_means = matrix.mean(axis=0)
-    point_tsi = float(point_means.max() - point_means.min())
+    point_tsi = float(point_means.std(ddof=0))
 
     if n_folds < 2:
         return {'tsi': point_tsi, 'tsi_std': 0.0,
                 'ci_lower': point_tsi, 'ci_upper': point_tsi}
 
     rng = np.random.RandomState(random_state)
-    boot = np.empty(n_bootstrap)
-    for b in range(n_bootstrap):
-        idx = rng.choice(n_folds, size=n_folds, replace=True)
-        means = matrix[idx].mean(axis=0)
-        boot[b] = means.max() - means.min()
+    idx_matrix = rng.choice(n_folds, size=(n_bootstrap, n_folds), replace=True)
+    boot = matrix[idx_matrix].mean(axis=1).std(axis=1, ddof=0)
 
     tail = (1 - ci) / 2
     return {

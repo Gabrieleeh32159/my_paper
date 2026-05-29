@@ -6,13 +6,68 @@ All classifiers follow a common interface for easy swapping.
 """
 
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier as _SklearnRF
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.base import BaseEstimator, ClassifierMixin
 from typing import Optional
 from xgboost import XGBClassifier as _XGBClassifier
+
+
+def _make_rf_estimator(n_estimators: int, max_depth: int, random_state: int):
+    """Return a cuML RandomForestClassifier if available, else sklearn's.
+
+    cuML RF runs fully on CUDA (A100 etc.) and is typically 10-50x faster than
+    sklearn's CPU implementation. The wrapper below converts cupy outputs to
+    numpy so CalibratedClassifierCV and the rest of the sklearn pipeline work
+    transparently.
+    """
+    try:
+        from cuml.ensemble import RandomForestClassifier as _CuRF
+
+        class _CuMLRFWrapper(BaseEstimator, ClassifierMixin):
+            """Thin sklearn-compatible wrapper around cuML's RandomForestClassifier."""
+
+            def __init__(self, n_estimators=100, max_depth=16, random_state=42):
+                self.n_estimators = n_estimators
+                self.max_depth = max_depth
+                self.random_state = random_state
+
+            def fit(self, X, y):
+                self._rf = _CuRF(
+                    n_estimators=self.n_estimators,
+                    max_depth=self.max_depth,
+                    random_state=self.random_state,
+                )
+                self._rf.fit(X, y)
+                self.classes_ = np.unique(y)
+                return self
+
+            def predict(self, X):
+                return np.asarray(self._rf.predict(X)).astype(int)
+
+            def predict_proba(self, X):
+                return np.asarray(self._rf.predict_proba(X))
+
+            @property
+            def feature_importances_(self):
+                return np.asarray(self._rf.feature_importances_)
+
+        return _CuMLRFWrapper(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+        )
+
+    except ImportError:
+        return _SklearnRF(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            n_jobs=-1,
+        )
 
 
 def _calibrated_base_estimators(calibrated_clf):
@@ -45,12 +100,7 @@ class RFClassifier:
     def __init__(self, n_estimators: int = 500, max_depth: int = 30,
                  random_state: int = 42, calibrate: bool = True,
                  calibration_method: str = 'sigmoid', calibration_cv: int = 3):
-        self.base = RandomForestClassifier(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            random_state=random_state,
-            n_jobs=-1
-        )
+        self.base = _make_rf_estimator(n_estimators, max_depth, random_state)
         self.calibrate = calibrate
         if calibrate:
             self.model = CalibratedClassifierCV(
@@ -94,12 +144,15 @@ class XGBoostClassifier:
                  learning_rate: float = 0.1, random_state: int = 42,
                  calibrate: bool = True, calibration_method: str = 'sigmoid',
                  calibration_cv: int = 3):
+        import torch as _torch
+        _device = 'cuda' if _torch.cuda.is_available() else 'cpu'
         self.base = _XGBClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
             random_state=random_state,
-            n_jobs=-1,
+            n_jobs=-1 if _device == 'cpu' else 1,
+            device=_device,
             eval_metric='mlogloss',
             use_label_encoder=False,
             verbosity=0,
@@ -235,7 +288,12 @@ class MLPClassifier:
         # (softmax/sigmoid of a cross-entropy-trained net is already roughly
         # calibrated).
         self.temperature = 1.0
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
+        elif torch.backends.mps.is_available():
+            self.device = torch.device('mps')
+        else:
+            self.device = torch.device('cpu')
 
     def _fit_temperature(self, logits: torch.Tensor, targets: torch.Tensor):
         """Optimize a single temperature scalar to minimize NLL on a held-out set."""
@@ -268,6 +326,8 @@ class MLPClassifier:
         input_dim = X_scaled.shape[1]
 
         self.model = MLPModel(input_dim, self.n_classes).to(self.device)
+        if hasattr(torch, 'compile') and self.device.type == 'cuda':
+            self.model = torch.compile(self.model, mode='reduce-overhead')
         optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
@@ -290,7 +350,12 @@ class MLPClassifier:
             y_tensor = torch.tensor(y, dtype=torch.long)
 
         dataset = TensorDataset(X_tensor, y_tensor)
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        loader = DataLoader(
+            dataset, batch_size=self.batch_size, shuffle=True,
+            pin_memory=(self.device.type != 'cpu'),
+            num_workers=4,
+            persistent_workers=True,
+        )
 
         # Validation set
         has_val = X_val is not None and y_val is not None
@@ -310,7 +375,8 @@ class MLPClassifier:
         for epoch in range(self.epochs):
             self.model.train()
             for X_batch, y_batch in loader:
-                X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                X_batch = X_batch.to(self.device, non_blocking=True)
+                y_batch = y_batch.to(self.device, non_blocking=True)
                 optimizer.zero_grad()
                 logits = self.model(X_batch)
                 loss = criterion(logits, y_batch)
