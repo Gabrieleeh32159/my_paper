@@ -10,8 +10,24 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
+from sklearn.calibration import CalibratedClassifierCV
 from typing import Optional
 from xgboost import XGBClassifier as _XGBClassifier
+
+
+def _calibrated_base_estimators(calibrated_clf):
+    """Return the list of fitted base estimators inside a CalibratedClassifierCV.
+
+    Handles sklearn naming changes ('estimator' vs. legacy 'base_estimator').
+    """
+    estimators = []
+    for cc in calibrated_clf.calibrated_classifiers_:
+        est = getattr(cc, 'estimator', None)
+        if est is None:
+            est = getattr(cc, 'base_estimator', None)
+        if est is not None:
+            estimators.append(est)
+    return estimators
 
 import torch
 import torch.nn as nn
@@ -19,16 +35,29 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 class RFClassifier:
-    """Random Forest classifier (500 trees, max_depth=30)."""
+    """Random Forest classifier (500 trees, max_depth=30).
+
+    Probabilities are calibrated by default (``CalibratedClassifierCV``) so that
+    ``predict_proba`` is suitable for log-loss / information-gain based metrics
+    such as the TSI. Set ``calibrate=False`` to recover raw RF probabilities.
+    """
 
     def __init__(self, n_estimators: int = 500, max_depth: int = 30,
-                 random_state: int = 42):
-        self.model = RandomForestClassifier(
+                 random_state: int = 42, calibrate: bool = True,
+                 calibration_method: str = 'sigmoid', calibration_cv: int = 3):
+        self.base = RandomForestClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             random_state=random_state,
             n_jobs=-1
         )
+        self.calibrate = calibrate
+        if calibrate:
+            self.model = CalibratedClassifierCV(
+                self.base, method=calibration_method, cv=calibration_cv
+            )
+        else:
+            self.model = self.base
         self.scaler = StandardScaler()
 
     def fit(self, X: np.ndarray, y: np.ndarray):
@@ -46,15 +75,26 @@ class RFClassifier:
 
     @property
     def feature_importances_(self):
+        # When calibrated, average MDI across the per-fold base estimators.
+        if self.calibrate:
+            imps = [est.feature_importances_
+                    for est in _calibrated_base_estimators(self.model)]
+            return np.mean(imps, axis=0)
         return self.model.feature_importances_
 
 
 class XGBoostClassifier:
-    """XGBoost classifier with sensible defaults."""
+    """XGBoost classifier with sensible defaults.
+
+    Like :class:`RFClassifier`, probabilities are calibrated by default so the
+    log-loss / information-gain TSI is computed on trustworthy probabilities.
+    """
 
     def __init__(self, n_estimators: int = 500, max_depth: int = 6,
-                 learning_rate: float = 0.1, random_state: int = 42):
-        self.model = _XGBClassifier(
+                 learning_rate: float = 0.1, random_state: int = 42,
+                 calibrate: bool = True, calibration_method: str = 'sigmoid',
+                 calibration_cv: int = 3):
+        self.base = _XGBClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
@@ -64,6 +104,13 @@ class XGBoostClassifier:
             use_label_encoder=False,
             verbosity=0,
         )
+        self.calibrate = calibrate
+        if calibrate:
+            self.model = CalibratedClassifierCV(
+                self.base, method=calibration_method, cv=calibration_cv
+            )
+        else:
+            self.model = self.base
         self.scaler = StandardScaler()
 
     def fit(self, X: np.ndarray, y: np.ndarray):
@@ -81,11 +128,20 @@ class XGBoostClassifier:
 
     @property
     def feature_importances_(self):
+        if self.calibrate:
+            imps = [est.feature_importances_
+                    for est in _calibrated_base_estimators(self.model)]
+            return np.mean(imps, axis=0)
         return self.model.feature_importances_
 
 
 class SVMClassifier:
-    """SVM with RBF kernel, hyperparameters tuned via 3-fold CV."""
+    """SVM with RBF kernel, hyperparameters tuned via 3-fold CV.
+
+    ``predict_proba`` uses libsvm's built-in Platt scaling (``probability=True``),
+    which already calibrates the probabilities, so no extra calibration wrapper
+    is applied here.
+    """
 
     def __init__(self, random_state: int = 42, subsample: Optional[float] = None):
         self.random_state = random_state
@@ -174,7 +230,33 @@ class MLPClassifier:
         self.class_weights = class_weights
         self.scaler = StandardScaler()
         self.model = None
+        # Temperature scaling factor for probability calibration. Fitted on the
+        # validation set when one is provided to ``fit``; otherwise left at 1.0
+        # (softmax/sigmoid of a cross-entropy-trained net is already roughly
+        # calibrated).
+        self.temperature = 1.0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    def _fit_temperature(self, logits: torch.Tensor, targets: torch.Tensor):
+        """Optimize a single temperature scalar to minimize NLL on a held-out set."""
+        T = torch.ones(1, device=self.device, requires_grad=True)
+        optimizer = torch.optim.LBFGS([T], lr=0.01, max_iter=50)
+
+        if self.task_type == 'multilabel':
+            criterion = nn.BCEWithLogitsLoss()
+            tgt = targets.float()
+        else:
+            criterion = nn.CrossEntropyLoss()
+            tgt = targets.long()
+
+        def closure():
+            optimizer.zero_grad()
+            loss = criterion(logits / T.clamp_min(1e-3), tgt)
+            loss.backward()
+            return loss
+
+        optimizer.step(closure)
+        self.temperature = float(T.detach().clamp_min(1e-3).item())
 
     def fit(self, X: np.ndarray, y: np.ndarray,
             X_val: Optional[np.ndarray] = None,
@@ -256,6 +338,13 @@ class MLPClassifier:
             self.model.to(self.device)
 
         self.model.eval()
+
+        # Calibrate probabilities via temperature scaling on the validation set.
+        if has_val:
+            with torch.no_grad():
+                val_logits = self.model(X_val_t)
+            self._fit_temperature(val_logits, y_val_t)
+
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -275,7 +364,7 @@ class MLPClassifier:
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(self.device)
 
         with torch.no_grad():
-            logits = self.model(X_tensor)
+            logits = self.model(X_tensor) / self.temperature
 
         if self.task_type == 'multilabel':
             return torch.sigmoid(logits).cpu().numpy()

@@ -1,3 +1,4 @@
 experiments/data
 experiments/venv
 experiments/*.pt
+CLAUDE.md

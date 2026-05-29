@@ -152,6 +152,89 @@ def spearman_with_bootstrap_ci(
     }
 
 
+def tsi_bootstrap_ci(
+    per_fold_info_gain: Dict[str, np.ndarray],
+    n_bootstrap: int = 1000,
+    ci: float = 0.95,
+    random_state: int = 42,
+) -> Dict:
+    """
+    Bootstrap confidence interval for a descriptor's TSI by resampling folds.
+
+    The TSI is range_k of the per-scale mean information gain. Resampling the
+    folds (rows) and recomputing the range yields its sampling distribution.
+
+    Parameters
+    ----------
+    per_fold_info_gain : Dict[str, np.ndarray]
+        Mapping scale_name -> array of per-fold information gain G(f, k).
+    n_bootstrap : int
+        Number of bootstrap resamples.
+    ci : float
+        Confidence level.
+
+    Returns
+    -------
+    Dict with keys: tsi (point estimate), tsi_std, ci_lower, ci_upper.
+    """
+    scales = list(per_fold_info_gain.keys())
+    matrix = np.column_stack([np.asarray(per_fold_info_gain[s]) for s in scales])
+    n_folds = matrix.shape[0]
+
+    point_means = matrix.mean(axis=0)
+    point_tsi = float(point_means.max() - point_means.min())
+
+    if n_folds < 2:
+        return {'tsi': point_tsi, 'tsi_std': 0.0,
+                'ci_lower': point_tsi, 'ci_upper': point_tsi}
+
+    rng = np.random.RandomState(random_state)
+    boot = np.empty(n_bootstrap)
+    for b in range(n_bootstrap):
+        idx = rng.choice(n_folds, size=n_folds, replace=True)
+        means = matrix[idx].mean(axis=0)
+        boot[b] = means.max() - means.min()
+
+    tail = (1 - ci) / 2
+    return {
+        'tsi': point_tsi,
+        'tsi_std': float(boot.std(ddof=1)),
+        'ci_lower': float(np.percentile(boot, tail * 100)),
+        'ci_upper': float(np.percentile(boot, (1 - tail) * 100)),
+    }
+
+
+def tsi_scale_significance(
+    info_gain_best: np.ndarray,
+    info_gain_worst: np.ndarray,
+    alpha: float = 0.05,
+) -> Dict:
+    """
+    Test whether a descriptor's best and worst scales differ significantly.
+
+    Paired Wilcoxon signed-rank test on the per-fold information gain of the
+    best vs. worst scale. A descriptor is only "temporally sensitive" when this
+    is significant -- i.e. the scale gap exceeds fold-level noise.
+
+    Returns
+    -------
+    Dict with keys: statistic, p_value, significant.
+    """
+    best = np.asarray(info_gain_best)
+    worst = np.asarray(info_gain_worst)
+    diff = best - worst
+
+    if len(diff) < 1 or np.all(diff == 0):
+        return {'statistic': 0.0, 'p_value': 1.0, 'significant': False}
+
+    stat, p_value = wilcoxon(best, worst, alternative='two-sided')
+    return {
+        'statistic': float(stat),
+        'p_value': float(p_value),
+        'significant': bool(p_value < alpha),
+    }
+
+
 def run_pairwise_comparisons(
     results: Dict[str, np.ndarray],
     alpha: float = 0.05
