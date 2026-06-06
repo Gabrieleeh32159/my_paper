@@ -462,6 +462,59 @@ def test_mlp_mtat_factory_enables_weighted_bce():
     assert mc.class_weights is None
 
 
+# --------------------------------------------------------------------------- #
+# Optional progress reporting: strict no-op by default, never alters results.
+# --------------------------------------------------------------------------- #
+def test_progress_iter_noop_and_order_preserving():
+    from src.progress import progress_iter
+    items = [10, 20, 30, 40]
+    # progress=False returns the SAME object untouched (zero overhead, no import).
+    assert progress_iter(items, progress=False) is items
+    # progress=True still yields the same values in the same order (tqdm-wrapped
+    # if available, else a transparent fallback).
+    assert list(progress_iter(range(4), progress=True, desc="t", total=4)) == [0, 1, 2, 3]
+    assert list(progress_iter(iter(items), progress=True, leave=False)) == items
+
+
+def test_progress_flag_does_not_change_compute_fold_gains():
+    # Turning progress on must change ONLY the display, never the numbers.
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold
+    from src.tsi import compute_fold_gains
+
+    class LR:
+        def __init__(self, input_dim, n_classes, task_type):
+            self.m = LogisticRegression(max_iter=200)
+            self.k = n_classes
+        def fit(self, X, y):
+            self.m.fit(X, y); self.fitted = self.m.classes_; return self
+        def predict_proba(self, X):
+            p = self.m.predict_proba(X)
+            full = np.zeros((X.shape[0], self.k))
+            for j, c in enumerate(self.fitted):
+                full[:, int(c)] = p[:, j]
+            full = np.clip(full, 1e-9, None)
+            return full / full.sum(axis=1, keepdims=True)
+
+    rng = np.random.RandomState(0)
+    n, C = 90, 3
+    y = rng.randint(0, C, n)
+    feats = {s: rng.normal(0, 1, (n, TRACK_DIM)) for s in ("short", "medium", "long")}
+    sl = descriptor_slices()
+    feats["short"][:, sl["mfcc"]] += np.eye(C)[y][:, :1] * 4.0
+    folds = list(StratifiedKFold(3, shuffle=True, random_state=0).split(np.zeros(n), y))
+
+    common = dict(descriptors=["mfcc", "zcr"], n_inner=2, seed=0)
+    fg_off = compute_fold_gains(feats, y, folds, LR, "multiclass", C, progress=False, **common)
+    fg_on = compute_fold_gains(feats, y, folds, LR, "multiclass", C, progress=True,
+                               desc="unit-test", **common)
+    # identical gain records regardless of the progress flag
+    for f in ("mfcc", "zcr"):
+        for rec_off, rec_on in zip(fg_off[f], fg_on[f]):
+            for kind in ("inner", "outer"):
+                assert rec_off[kind] == rec_on[kind]
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

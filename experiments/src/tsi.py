@@ -37,6 +37,7 @@ from typing import Dict, List, Optional, Callable, Sequence
 
 from .features import FEATURE_DIMS, extract_descriptor
 from .evaluation import gain_from_predictions, truncate_gain
+from .progress import progress_iter
 
 SCALE_ORDER = ["short", "medium", "long"]
 BASELINE = "medium"          # k_bar: the 2 s convention the TSI questions
@@ -283,6 +284,8 @@ def compute_fold_gains(
     scales: Sequence[str] = tuple(SCALE_ORDER),
     n_inner: int = 3,
     seed: int = 42,
+    progress: bool = False,
+    desc: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, Dict[str, float]]]]:
     """Train classifiers to produce nested per-fold gain records per descriptor.
 
@@ -293,6 +296,9 @@ def compute_fold_gains(
 
     Returns ``{descriptor: [ {'inner': {scale:G}, 'outer': {scale:G}}, ... ]}``
     ready for :func:`tsi_from_fold_gains`.
+
+    Set ``progress=True`` for nested tqdm bars (outer over folds, inner over
+    descriptors); ``desc`` labels them (e.g. the dataset name). Default is silent.
     """
     descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
     scales = [s for s in scales if s in features]
@@ -304,12 +310,17 @@ def compute_fold_gains(
         for f in descriptors
     }
 
+    label = desc or "gains"
     fold_gains = {f: [] for f in descriptors}
-    for fold_i, (train_idx, eval_idx) in enumerate(outer_folds):
+    folds = list(enumerate(outer_folds))
+    for fold_i, (train_idx, eval_idx) in progress_iter(
+            folds, progress, desc=f"{label} | gains [folds]", total=len(folds)):
         train_idx = np.asarray(train_idx)
         eval_idx = np.asarray(eval_idx)
         inner = _inner_splits(y, train_idx, n_inner, task_type, seed + fold_i)
-        for f in descriptors:
+        for f in progress_iter(descriptors, progress,
+                               desc=f"  fold {fold_i + 1}/{len(folds)} [desc]",
+                               leave=False):
             inner_g, outer_g = {}, {}
             for k in scales:
                 X = desc_X[f][k]
@@ -338,6 +349,8 @@ def permutation_null_kstar_gains(
     scales: Sequence[str] = tuple(SCALE_ORDER),
     n_permutations: int = 100,
     seed: int = 1234,
+    progress: bool = False,
+    desc: Optional[str] = None,
 ) -> List[float]:
     """Per-task null sample of G(f,k*) by permuting labels and re-selecting argmax.
 
@@ -346,6 +359,9 @@ def permutation_null_kstar_gains(
     the permuted-label gains -- so the null embeds the maximization bias. Gains are
     pooled across descriptors and folds into one per-task distribution feeding
     :func:`gate_threshold`. (Costly; the notebook scopes ``n_permutations``.)
+
+    Set ``progress=True`` for a tqdm bar over permutation replicates (the slowest,
+    most opaque phase); ``desc`` labels it. Default is silent.
     """
     descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
     scales = [s for s in scales if s in features]
@@ -355,8 +371,10 @@ def permutation_null_kstar_gains(
         f: {k: extract_descriptor(features[k], f) for k in scales}
         for f in descriptors
     }
+    label = desc or "gate"
     null_gains: List[float] = []
-    for r in range(n_permutations):
+    for r in progress_iter(range(n_permutations), progress,
+                           desc=f"{label} | gate τ [perm]", total=n_permutations):
         y_perm = y[rng.permutation(len(y))]
         for (train_idx, eval_idx) in outer_folds:
             train_idx = np.asarray(train_idx)
@@ -390,21 +408,28 @@ def compute_tsi_cv_full(
     n_boot: int = 1000,
     n_permutations: int = 100,
     seed: int = 42,
+    progress: bool = False,
+    desc: Optional[str] = None,
 ) -> Dict:
     """Full per-dataset TSI: gain records -> stats -> per-task gate -> exploitability.
 
     Returns a dict keyed by descriptor with the gated TSI statistics, plus a
     top-level ``'tau'`` and ``'baseline'``. ``scales`` may be length 2 (IRMAS,
     K=2) -- the same code path applies; the baseline must be among ``scales``.
+
+    ``progress``/``desc`` are forwarded to the gain-record and permutation-null
+    drivers for tqdm progress bars (silent by default).
     """
     descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
     fold_gains = compute_fold_gains(
         features, y, outer_folds, clf_factory, task_type, n_classes,
         descriptors=descriptors, scales=scales, n_inner=n_inner, seed=seed,
+        progress=progress, desc=desc,
     )
     null = permutation_null_kstar_gains(
         features, y, outer_folds, clf_factory, task_type, n_classes,
         descriptors=descriptors, scales=scales, n_permutations=n_permutations, seed=seed + 7,
+        progress=progress, desc=desc,
     )
     tau = gate_threshold(null)
 

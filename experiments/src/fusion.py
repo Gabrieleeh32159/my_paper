@@ -190,6 +190,8 @@ def evaluate_fusion_cv(
     n_inner: int = 3,
     seed: int = 42,
     use_tsi_prior: bool = True,
+    progress: bool = False,
+    desc: Optional[str] = None,
 ) -> Dict[str, List[float]]:
     """Per-fold primary-metric scores for each of the 5 strategies (+ references).
 
@@ -199,8 +201,12 @@ def evaluate_fusion_cv(
     ``single_scale``, ``early``, ``late_uniform``, ``tsi_guided``,
     ``tsi_weighted_lf`` and the references ``learned_lf`` (no prior, upper bound)
     and ``late_uniform`` (lower bound is the same uniform LF).
+
+    Set ``progress=True`` for a tqdm bar over outer folds (each fold trains the 5
+    strategies); ``desc`` labels it. Default is silent.
     """
     from .tsi import _inner_splits
+    from .progress import progress_iter
     scales = [s for s in scales if s in features]
     y = np.asarray(y)
     tsi_by_descriptor = tsi_by_descriptor or {}
@@ -209,7 +215,10 @@ def evaluate_fusion_cv(
                ["single_scale", "early", "late_uniform", "tsi_guided",
                 "tsi_weighted_lf", "learned_lf"]}
 
-    for fold_i, (train_idx, eval_idx) in enumerate(outer_folds):
+    label = desc or "fusion"
+    folds = list(enumerate(outer_folds))
+    for fold_i, (train_idx, eval_idx) in progress_iter(
+            folds, progress, desc=f"{label} | fusion [folds]", total=len(folds)):
         train_idx, eval_idx = np.asarray(train_idx), np.asarray(eval_idx)
         inner = _inner_splits(y, train_idx, n_inner, task_type, seed + fold_i)
 

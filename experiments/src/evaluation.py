@@ -303,6 +303,8 @@ def calibration_report(
     n_classes: int,
     scale: str = "medium",
     n_bins: int = 15,
+    progress: bool = False,
+    desc: Optional[str] = None,
 ) -> Dict:
     """ECE averaged over outer folds + a pooled reliability curve for one classifier.
 
@@ -310,10 +312,17 @@ def calibration_report(
     on the held-out fold; the per-fold ECE is averaged and the eval predictions are
     pooled into a single reliability diagram. Returns ``ece_mean``, ``ece_std``,
     ``ece_per_fold`` and ``reliability`` (JSON-friendly lists).
+
+    Set ``progress=True`` for a tqdm bar over outer folds; ``desc`` labels it.
+    Default is silent.
     """
+    from .progress import progress_iter
     y = np.asarray(y)
+    label = desc or "calibration"
     eces, pooled_proba, pooled_y = [], [], []
-    for train_idx, eval_idx in outer_folds:
+    folds = list(outer_folds)
+    for train_idx, eval_idx in progress_iter(
+            folds, progress, desc=f"{label} | calib [folds]", total=len(folds)):
         train_idx, eval_idx = np.asarray(train_idx), np.asarray(eval_idx)
         clf = clf_factory(input_dim=features[scale].shape[1],
                           n_classes=n_classes, task_type=task_type)
