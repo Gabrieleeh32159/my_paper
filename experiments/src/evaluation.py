@@ -1,340 +1,338 @@
 """
-Evaluation metrics for TSI experiments.
+Evaluation primitives for the redesigned TSI method.
 
-Genre classification: accuracy, F1 macro, F1 per class.
-Auto-tagging (MTAT): mAP, ROC-AUC macro, AP per tag.
-Instruments (IRMAS): accuracy, F1 macro.
+Implements the *normalized information gain* that underlies the Temporal
+Sensitivity Index (TSI), as specified in ``paper/proposal.tex`` (Sec. TSI):
+
+    G(f, k) = 1 - L(f, k) / L_chance
+
+where
+
+* ``L(f, k)`` is the log-loss of a *calibrated* classifier trained on descriptor
+  ``f`` alone at scale ``k``, and
+* ``L_chance`` is the log-loss of the **train base-rate** predictor, evaluated on
+  the *same* evaluation fold as ``L(f, k)``.
+
+Multiclass: base rate = train class frequencies ``p_c``.
+Multilabel (MTAT): base rate = per-tag train prevalence ``pi_t``; the chance
+log-loss is the mean over tags of the binary cross-entropy of ``pi_t``.
+
+This module also provides the Expected Calibration Error (ECE) and reliability
+curve data, since calibration quality governs whether ``G`` is interpretable as
+information (the paper requires reporting ECE + reliability diagrams).
+
+NOTE: ``G in (-inf, 1]``. The floor ``0`` is an *interpretive* convention
+("no useful information"), not a guaranteed property; imperfect calibration can
+yield ``L > L_chance`` and hence ``G < 0``. Use :func:`truncate_gain` for the
+reporting convention; selection / CI machinery operates on the raw ``G``.
 """
 
+from __future__ import annotations
+
+import warnings
+
 import numpy as np
-from typing import Dict, List, Optional, Tuple
-from sklearn.metrics import (
-    accuracy_score, f1_score,
-    average_precision_score, roc_auc_score
-)
+from typing import Dict, Optional
+
+# Probability clip to keep log-loss finite (mirrors sklearn's eps handling).
+EPS = 1e-15
+# Prevalence clip for the multilabel base rate: guards against tags with 0 or 1
+# prevalence in a given train fold (which would make the chance log-loss diverge).
+PREVALENCE_EPS = 1e-6
 
 
-# ---------------------------------------------------------------------------
-# Log-loss / information-gain utilities (used by the TSI computation).
-#
-# The TSI is built on the normalized information gain of a descriptor at a
-# given temporal scale:
-#
-#     G(f, k) = 1 - L_model(f, k) / L_chance
-#
-# where L_model is the (clipped) log-loss of the calibrated classifier trained
-# on descriptor f at scale k, and L_chance is the log-loss of the constant
-# class-prior predictor (the best "no-feature" model). G is the fraction of the
-# task's label uncertainty that the descriptor resolves; it is 0 at chance and
-# 1 for a perfect classifier, and is comparable across tasks with different
-# numbers of classes / different class balance.
-# ---------------------------------------------------------------------------
-
-def class_prior(y_train: np.ndarray, n_classes: int, eps: float = 1e-12) -> np.ndarray:
-    """Empirical class-prior distribution over [0, n_classes) from training labels."""
-    counts = np.bincount(np.asarray(y_train).astype(int), minlength=n_classes).astype(float)
-    prior = counts / counts.sum()
-    prior = np.clip(prior, eps, None)
-    return prior / prior.sum()
-
-
-def tag_prevalence(y_train: np.ndarray, eps: float = 1e-6) -> np.ndarray:
-    """Per-tag positive prevalence (multilabel chance baseline) from training labels."""
-    prev = np.asarray(y_train, dtype=float).mean(axis=0)
-    return np.clip(prev, eps, 1.0 - eps)
-
-
-def get_proba_in_class_order(classifier, X: np.ndarray, n_classes: int,
-                             eps: float = 1e-15) -> np.ndarray:
-    """Return ``predict_proba`` with columns aligned to class order [0, n_classes).
-
-    Tree/SVM classifiers only emit columns for classes seen during training, so
-    a fold missing a class would otherwise produce a misaligned matrix. Columns
-    for unseen classes are filled with ~0 and each row is renormalized.
-    """
-    proba = classifier.predict_proba(X)
-    classes_ = None
-    if hasattr(classifier, 'model') and hasattr(classifier.model, 'classes_'):
-        classes_ = classifier.model.classes_
-
-    if classes_ is None:
-        # MLP wrappers already output the full, ordered [0, n_classes) columns.
-        return proba
-
-    aligned = np.zeros((proba.shape[0], n_classes), dtype=float)
-    for src_col, cls in enumerate(np.asarray(classes_).astype(int).tolist()):
-        if 0 <= cls < n_classes:
-            aligned[:, cls] = proba[:, src_col]
-    aligned = aligned / np.clip(aligned.sum(axis=1, keepdims=True), eps, None)
-    return aligned
-
-
-def multiclass_log_loss(y_true: np.ndarray, proba: np.ndarray,
-                        eps: float = 1e-15) -> float:
-    """Mean negative log-likelihood for single-label multiclass predictions."""
-    p = np.clip(proba, eps, 1.0 - eps)
-    p = p / p.sum(axis=1, keepdims=True)
-    y = np.asarray(y_true).astype(int)
-    return float(np.mean(-np.log(p[np.arange(len(y)), y])))
-
-
-def binary_cross_entropy(y_true: np.ndarray, proba: np.ndarray,
-                         eps: float = 1e-15) -> float:
-    """Mean binary cross-entropy averaged over samples and tags (multilabel)."""
-    p = np.clip(proba, eps, 1.0 - eps)
-    y = np.asarray(y_true, dtype=float)
-    return float(-np.mean(y * np.log(p) + (1.0 - y) * np.log(1.0 - p)))
-
-
-def normalized_information_gain(y_true: np.ndarray, proba: np.ndarray,
-                                prior: np.ndarray, task_type: str = 'multiclass',
-                                eps: float = 1e-15) -> tuple:
-    """Compute G = 1 - L_model / L_chance for one (descriptor, scale).
+# --------------------------------------------------------------------------- #
+# Log-loss
+# --------------------------------------------------------------------------- #
+def log_loss_multiclass(
+    y_true: np.ndarray,
+    proba: np.ndarray,
+    n_classes: Optional[int] = None,
+) -> float:
+    """Mean per-sample cross-entropy for a multiclass problem.
 
     Parameters
     ----------
     y_true : np.ndarray
-        True labels: integer class ids (multiclass) or 0/1 matrix (multilabel).
+        Integer class labels, shape ``(n,)``.
     proba : np.ndarray
-        Predicted probabilities, columns aligned to class/tag order.
-    prior : np.ndarray
-        Chance predictor: class prior (multiclass) or tag prevalence (multilabel).
-    task_type : str
-        'multiclass' or 'multilabel'.
-
-    Returns
-    -------
-    (G, L_model, L_chance) : tuple of floats
+        Predicted class probabilities, shape ``(n, C)`` (rows sum to 1).
+    n_classes : int, optional
+        Total number of classes ``C``. Defaults to ``proba.shape[1]``.
     """
-    n = len(y_true)
-    prior = np.asarray(prior, dtype=float).reshape(1, -1)
-    proba_chance = np.tile(prior, (n, 1))
-
-    if task_type == 'multilabel':
-        ll_model = binary_cross_entropy(y_true, proba, eps)
-        ll_chance = binary_cross_entropy(y_true, proba_chance, eps)
-    else:
-        ll_model = multiclass_log_loss(y_true, proba, eps)
-        ll_chance = multiclass_log_loss(y_true, proba_chance, eps)
-
-    g = 1.0 - ll_model / ll_chance if ll_chance > 0 else 0.0
-    return float(g), float(ll_model), float(ll_chance)
+    y_true = np.asarray(y_true).astype(int)
+    proba = np.asarray(proba, dtype=float)
+    if proba.ndim != 2:
+        raise ValueError("proba must be 2-D (n_samples, n_classes)")
+    C = n_classes if n_classes is not None else proba.shape[1]
+    proba = np.clip(proba, EPS, 1.0)
+    # renormalize after clipping
+    proba = proba / proba.sum(axis=1, keepdims=True)
+    idx = np.arange(len(y_true))
+    p_true = proba[idx, y_true]
+    return float(-np.mean(np.log(p_true)))
 
 
-def evaluate_multiclass(y_true: np.ndarray, y_pred: np.ndarray,
-                        class_names: Optional[List[str]] = None) -> Dict:
-    """
-    Evaluate multiclass classification (genre, instruments).
-
-    Returns
-    -------
-    Dict with keys: accuracy, f1_macro, f1_per_class, classification_report.
-    """
-    acc = accuracy_score(y_true, y_pred)
-    f1_macro = f1_score(y_true, y_pred, average='macro')
-    f1_per_class = f1_score(y_true, y_pred, average=None)
-
-    results = {
-        'accuracy': acc,
-        'f1_macro': f1_macro,
-        'f1_per_class': f1_per_class.tolist(),
-    }
-
-    if class_names:
-        results['f1_by_name'] = {
-            name: f1 for name, f1 in zip(class_names, f1_per_class)
-        }
-
-    return results
-
-
-def evaluate_multilabel(y_true: np.ndarray, y_proba: np.ndarray,
-                        tag_names: Optional[List[str]] = None,
-                        top_k: int = 10) -> Dict:
-    """
-    Evaluate multilabel classification (auto-tagging).
+def log_loss_multilabel(y_true: np.ndarray, proba: np.ndarray) -> float:
+    """Mean binary cross-entropy over tags and samples (multilabel).
 
     Parameters
     ----------
     y_true : np.ndarray
-        Binary label matrix (n_samples, n_tags).
-    y_proba : np.ndarray
-        Predicted probabilities (n_samples, n_tags).
-    tag_names : list, optional
-        Names of the tags.
-    top_k : int
-        Number of top tags to report individual AP.
+        Binary tag matrix, shape ``(n, T)``.
+    proba : np.ndarray
+        Predicted per-tag probabilities, shape ``(n, T)``.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    proba = np.clip(np.asarray(proba, dtype=float), EPS, 1.0 - EPS)
+    bce = -(y_true * np.log(proba) + (1.0 - y_true) * np.log(1.0 - proba))
+    return float(np.mean(bce))
+
+
+def task_log_loss(y_true, proba, task_type: str, n_classes: Optional[int] = None) -> float:
+    """Dispatch log-loss by task type."""
+    if task_type == "multilabel":
+        return log_loss_multilabel(y_true, proba)
+    return log_loss_multiclass(y_true, proba, n_classes=n_classes)
+
+
+# --------------------------------------------------------------------------- #
+# Base-rate (chance) predictor and its log-loss
+# --------------------------------------------------------------------------- #
+def base_rate(y_train: np.ndarray, task_type: str, n_classes: Optional[int] = None) -> np.ndarray:
+    """Constant base-rate probability vector estimated on the training fold.
 
     Returns
     -------
-    Dict with keys: mAP, roc_auc_macro, ap_per_tag.
+    np.ndarray
+        Multiclass: class-frequency vector ``p`` of length ``C``.
+        Multilabel: per-tag prevalence vector ``pi`` of length ``T``.
     """
-    # Filter out tags with no positive examples in y_true
-    valid_tags = y_true.sum(axis=0) > 0
-    y_true_valid = y_true[:, valid_tags]
-    y_proba_valid = y_proba[:, valid_tags]
+    if task_type == "multilabel":
+        y_train = np.asarray(y_train, dtype=float)
+        # clip prevalences off 0/1 so a tag absent (or saturated) in this train
+        # fold yields a finite chance log-loss (paper: H(pi_t) base rate per tag).
+        return np.clip(y_train.mean(axis=0), PREVALENCE_EPS, 1.0 - PREVALENCE_EPS)
+    y_train = np.asarray(y_train).astype(int)
+    C = n_classes if n_classes is not None else int(y_train.max()) + 1
+    counts = np.bincount(y_train, minlength=C).astype(float)
+    return counts / counts.sum()
 
-    # mAP
-    ap_per_tag = average_precision_score(y_true_valid, y_proba_valid, average=None)
-    mAP = np.mean(ap_per_tag)
 
-    # ROC-AUC
-    try:
-        roc_auc = roc_auc_score(y_true_valid, y_proba_valid, average='macro')
-    except ValueError:
-        roc_auc = None
+def chance_log_loss(
+    y_train: np.ndarray,
+    y_eval: np.ndarray,
+    task_type: str,
+    n_classes: Optional[int] = None,
+) -> float:
+    """Log-loss of the train base-rate predictor, evaluated on the eval fold.
 
-    results = {
-        'mAP': mAP,
-        'roc_auc_macro': roc_auc,
-        'ap_per_tag': ap_per_tag.tolist(),
+    This is ``L_chance`` in ``G = 1 - L / L_chance``. Evaluating it on the same
+    eval fold as ``L`` (rather than using the closed form ``-sum p_c log p_c``)
+    keeps ``G`` correctly bounded when the eval distribution differs slightly
+    from training (paper, Eq. L_chance).
+    """
+    if task_type == "multilabel":
+        pi = base_rate(y_train, task_type)
+        n = np.asarray(y_eval).shape[0]
+        proba = np.tile(pi, (n, 1))
+        return log_loss_multilabel(y_eval, proba)
+    C = n_classes
+    if C is None:
+        C = int(max(np.max(y_train), np.max(y_eval))) + 1
+    p = base_rate(y_train, task_type, n_classes=C)
+    n = np.asarray(y_eval).shape[0]
+    proba = np.tile(p, (n, 1))
+    return log_loss_multiclass(y_eval, proba, n_classes=C)
+
+
+# --------------------------------------------------------------------------- #
+# Normalized information gain
+# --------------------------------------------------------------------------- #
+def information_gain(loss: float, loss_chance: float) -> float:
+    """Raw normalized information gain ``G = 1 - L / L_chance`` (in ``(-inf, 1]``).
+
+    Not truncated; ``G`` can be negative under imperfect calibration.
+    """
+    if loss_chance <= 0:
+        # Degenerate task (e.g. a single class / zero-entropy base rate): G is
+        # undefined. We fall back to 0 but warn rather than mask it silently.
+        warnings.warn(
+            "information_gain: L_chance <= 0 (degenerate base rate); "
+            "returning G=0.0.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return 0.0
+    return 1.0 - loss / loss_chance
+
+
+def truncate_gain(g: float) -> float:
+    """Reporting convention: floor negative gains at 0 ("no useful information")."""
+    return float(max(g, 0.0))
+
+
+def gain_from_predictions(
+    y_train: np.ndarray,
+    y_eval: np.ndarray,
+    proba_eval: np.ndarray,
+    task_type: str,
+    n_classes: Optional[int] = None,
+    truncate: bool = False,
+) -> float:
+    """End-to-end ``G`` from predicted probabilities on an eval fold.
+
+    Computes ``L`` (model) and ``L_chance`` (train base rate) on the same
+    ``y_eval`` and returns ``G``. With ``truncate=True`` applies the floor-at-0
+    reporting convention.
+    """
+    L = task_log_loss(y_eval, proba_eval, task_type, n_classes=n_classes)
+    L_chance = chance_log_loss(y_train, y_eval, task_type, n_classes=n_classes)
+    g = information_gain(L, L_chance)
+    return truncate_gain(g) if truncate else g
+
+
+# --------------------------------------------------------------------------- #
+# Calibration: Expected Calibration Error + reliability curve
+# --------------------------------------------------------------------------- #
+def expected_calibration_error(
+    y_true: np.ndarray,
+    proba: np.ndarray,
+    task_type: str = "multiclass",
+    n_bins: int = 15,
+) -> float:
+    """Expected Calibration Error.
+
+    Multiclass: confidence = max predicted probability; correctness = top-1 hit.
+    Multilabel: mean ECE over tags (per-tag binary confidence/accuracy).
+    """
+    if task_type == "multilabel":
+        y_true = np.asarray(y_true)
+        proba = np.asarray(proba, dtype=float)
+        eces = [
+            _binary_ece(y_true[:, t], proba[:, t], n_bins)
+            for t in range(proba.shape[1])
+        ]
+        return float(np.mean(eces))
+
+    y_true = np.asarray(y_true).astype(int)
+    proba = np.asarray(proba, dtype=float)
+    conf = proba.max(axis=1)
+    pred = proba.argmax(axis=1)
+    correct = (pred == y_true).astype(float)
+    return _reliability_ece(conf, correct, n_bins)
+
+
+def _binary_ece(y_true: np.ndarray, p: np.ndarray, n_bins: int) -> float:
+    """ECE for a single binary tag (confidence = predicted prob of positive)."""
+    y_true = np.asarray(y_true, dtype=float)
+    p = np.asarray(p, dtype=float)
+    # For a binary tag, confidence in the predicted label is max(p, 1-p).
+    pred = (p >= 0.5).astype(float)
+    conf = np.where(pred == 1, p, 1.0 - p)
+    correct = (pred == y_true).astype(float)
+    return _reliability_ece(conf, correct, n_bins)
+
+
+def _reliability_ece(conf: np.ndarray, correct: np.ndarray, n_bins: int) -> float:
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    n = len(conf)
+    if n == 0:
+        return 0.0
+    for i in range(n_bins):
+        lo, hi = bins[i], bins[i + 1]
+        mask = (conf > lo) & (conf <= hi) if i > 0 else (conf >= lo) & (conf <= hi)
+        if not np.any(mask):
+            continue
+        acc = correct[mask].mean()
+        avg_conf = conf[mask].mean()
+        ece += (mask.sum() / n) * abs(acc - avg_conf)
+    return float(ece)
+
+
+def reliability_curve(
+    y_true: np.ndarray,
+    proba: np.ndarray,
+    task_type: str = "multiclass",
+    n_bins: int = 15,
+) -> Dict[str, np.ndarray]:
+    """Reliability-diagram data (bin confidence vs. empirical accuracy).
+
+    Returns a dict with arrays ``bin_confidence``, ``bin_accuracy`` and
+    ``bin_count`` (length ``n_bins``; empty bins are NaN). For multilabel the
+    confidence/accuracy are pooled across tags.
+    """
+    if task_type == "multilabel":
+        proba = np.asarray(proba, dtype=float)
+        y_true = np.asarray(y_true, dtype=float)
+        pred = (proba >= 0.5).astype(float)
+        conf = np.where(pred == 1, proba, 1.0 - proba).ravel()
+        correct = (pred == y_true).astype(float).ravel()
+    else:
+        proba = np.asarray(proba, dtype=float)
+        y_true = np.asarray(y_true).astype(int)
+        conf = proba.max(axis=1)
+        correct = (proba.argmax(axis=1) == y_true).astype(float)
+
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_conf = np.full(n_bins, np.nan)
+    bin_acc = np.full(n_bins, np.nan)
+    bin_cnt = np.zeros(n_bins)
+    for i in range(n_bins):
+        lo, hi = bins[i], bins[i + 1]
+        mask = (conf > lo) & (conf <= hi) if i > 0 else (conf >= lo) & (conf <= hi)
+        bin_cnt[i] = mask.sum()
+        if np.any(mask):
+            bin_conf[i] = conf[mask].mean()
+            bin_acc[i] = correct[mask].mean()
+    return {
+        "bin_confidence": bin_conf,
+        "bin_accuracy": bin_acc,
+        "bin_count": bin_cnt,
+        "bin_edges": bins,
     }
 
-    # Top-k tag APs
-    if tag_names:
-        valid_tag_names = [tag_names[i] for i in range(len(tag_names)) if valid_tags[i]]
-        tag_aps = list(zip(valid_tag_names, ap_per_tag))
-        tag_aps.sort(key=lambda x: -x[1])
-        results['top_tags'] = tag_aps[:top_k]
 
-    return results
-
-
-def run_full_evaluation(
+def calibration_report(
     features: Dict[str, np.ndarray],
-    labels: np.ndarray,
-    classifier,
-    train_idx: np.ndarray,
-    test_idx: np.ndarray,
-    strategy: str,
-    task_type: str = 'multiclass',
-    class_names: Optional[List[str]] = None,
-    fusion_params: Optional[Dict] = None,
+    y: np.ndarray,
+    outer_folds,
+    clf_factory,
+    task_type: str,
+    n_classes: int,
+    scale: str = "medium",
+    n_bins: int = 15,
 ) -> Dict:
+    """ECE averaged over outer folds + a pooled reliability curve for one classifier.
+
+    For each outer fold a classifier is trained on the given ``scale`` and scored
+    on the held-out fold; the per-fold ECE is averaged and the eval predictions are
+    pooled into a single reliability diagram. Returns ``ece_mean``, ``ece_std``,
+    ``ece_per_fold`` and ``reliability`` (JSON-friendly lists).
     """
-    Run evaluation for a given fusion strategy.
-
-    Parameters
-    ----------
-    features : Dict[str, np.ndarray]
-        Mapping scale_name -> feature matrix.
-    labels : np.ndarray
-        Labels.
-    classifier : Classifier instance or factory.
-    train_idx, test_idx : np.ndarray
-        Split indices.
-    strategy : str
-        One of 'short', 'medium', 'long', 'early', 'late', 'tsi_weighted'.
-    task_type : str
-        'multiclass' or 'multilabel'.
-    class_names : list, optional
-        Names of classes/tags.
-    fusion_params : dict, optional
-        Required for 'tsi_weighted': {tsi_scores, optimal_scales}.
-
-    Returns
-    -------
-    Dict with evaluation metrics.
-    """
-    from .fusion import single_scale, early_fusion, late_fusion, tsi_weighted_fusion
-
-    def _align_proba_columns(
-        proba: np.ndarray,
-        predicted_classes: Optional[np.ndarray],
-        class_order: np.ndarray,
-    ) -> np.ndarray:
-        """Align probability columns to a shared class order."""
-        if predicted_classes is None:
-            # MLP wrappers already output fixed class order [0..n_classes-1].
-            if proba.shape[1] != len(class_order):
-                raise ValueError(
-                    f"Probability columns ({proba.shape[1]}) do not match class order size ({len(class_order)})."
-                )
-            return proba
-
-        aligned = np.zeros((proba.shape[0], len(class_order)), dtype=proba.dtype)
-        class_to_pos = {c: i for i, c in enumerate(class_order.tolist())}
-        for src_col, cls in enumerate(predicted_classes.tolist()):
-            if cls in class_to_pos:
-                aligned[:, class_to_pos[cls]] = proba[:, src_col]
-        return aligned
-
-    if strategy in ('short', 'medium', 'long'):
-        X = single_scale(features, strategy)
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = labels[train_idx], labels[test_idx]
-
-        classifier.fit(X_train, y_train)
-        y_pred = classifier.predict(X_test)
-
-        if task_type == 'multilabel':
-            y_proba = classifier.predict_proba(X_test)
-            return evaluate_multilabel(y_test, y_proba, class_names)
-        else:
-            return evaluate_multiclass(y_test, y_pred, class_names)
-
-    elif strategy == 'early':
-        X = early_fusion(features)
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = labels[train_idx], labels[test_idx]
-
-        classifier.fit(X_train, y_train)
-        y_pred = classifier.predict(X_test)
-
-        if task_type == 'multilabel':
-            y_proba = classifier.predict_proba(X_test)
-            return evaluate_multilabel(y_test, y_proba, class_names)
-        else:
-            return evaluate_multiclass(y_test, y_pred, class_names)
-
-    elif strategy == 'late':
-        from copy import deepcopy
-        from joblib import Parallel, delayed
-
-        y_test = labels[test_idx]
-        class_order = np.sort(np.unique(labels))
-
-        def _train_scale(scale_name):
-            X_scale = features[scale_name]
-            clf_scale = deepcopy(classifier)
-            clf_scale.fit(X_scale[train_idx], labels[train_idx])
-            proba = clf_scale.predict_proba(X_scale[test_idx])
-            classes_ = getattr(getattr(clf_scale, 'model', None), 'classes_', None)
-            return scale_name, _align_proba_columns(proba, classes_, class_order)
-
-        scale_results = Parallel(n_jobs=3, prefer='threads')(
-            delayed(_train_scale)(s) for s in ['short', 'medium', 'long']
-        )
-        predictions = dict(scale_results)
-
-        avg_proba = late_fusion(predictions)
-
-        if task_type == 'multilabel':
-            return evaluate_multilabel(y_test, avg_proba, class_names)
-        else:
-            y_pred = class_order[np.argmax(avg_proba, axis=1)]
-            return evaluate_multiclass(y_test, y_pred, class_names)
-
-    elif strategy == 'tsi_weighted':
-        if fusion_params is None:
-            raise ValueError("fusion_params required for tsi_weighted strategy")
-
-        X = tsi_weighted_fusion(
-            features,
-            tsi_scores=fusion_params['tsi_scores'],
-            optimal_scales=fusion_params['optimal_scales']
-        )
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = labels[train_idx], labels[test_idx]
-
-        classifier.fit(X_train, y_train)
-        y_pred = classifier.predict(X_test)
-
-        if task_type == 'multilabel':
-            y_proba = classifier.predict_proba(X_test)
-            return evaluate_multilabel(y_test, y_proba, class_names)
-        else:
-            return evaluate_multiclass(y_test, y_pred, class_names)
-
-    else:
-        raise ValueError(f"Unknown strategy: {strategy}")
+    y = np.asarray(y)
+    eces, pooled_proba, pooled_y = [], [], []
+    for train_idx, eval_idx in outer_folds:
+        train_idx, eval_idx = np.asarray(train_idx), np.asarray(eval_idx)
+        clf = clf_factory(input_dim=features[scale].shape[1],
+                          n_classes=n_classes, task_type=task_type)
+        clf.fit(features[scale][train_idx], y[train_idx])
+        proba = clf.predict_proba(features[scale][eval_idx])
+        eces.append(expected_calibration_error(y[eval_idx], proba, task_type, n_bins))
+        pooled_proba.append(np.asarray(proba))
+        pooled_y.append(y[eval_idx])
+    proba_all = np.concatenate(pooled_proba, axis=0)
+    y_all = np.concatenate(pooled_y, axis=0)
+    rc = reliability_curve(y_all, proba_all, task_type, n_bins)
+    return {
+        "scale": scale,
+        "ece_mean": float(np.mean(eces)),
+        "ece_std": float(np.std(eces)),
+        "ece_per_fold": [float(e) for e in eces],
+        "reliability": {
+            "bin_confidence": [None if np.isnan(v) else float(v) for v in rc["bin_confidence"]],
+            "bin_accuracy": [None if np.isnan(v) else float(v) for v in rc["bin_accuracy"]],
+            "bin_count": [int(c) for c in rc["bin_count"]],
+        },
+    }

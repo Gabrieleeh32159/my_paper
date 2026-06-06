@@ -7,8 +7,11 @@ via mean + std statistics.
 """
 
 import numpy as np
-import librosa
 from typing import Dict, Tuple, Optional
+
+# ``librosa`` is only needed for audio extraction (notebook 01). It is imported
+# lazily inside the extraction functions so that the analysis modules (TSI,
+# fusion, stats) and the unit tests can import the slicing helpers without it.
 
 
 # Constants
@@ -56,6 +59,7 @@ def extract_frame_features(y: np.ndarray, sr: int = SR) -> Dict[str, np.ndarray]
         Dictionary mapping descriptor name to frame-level feature matrix.
         Each value has shape (n_features, n_frames).
     """
+    import librosa  # lazy: only needed for audio extraction
     features = {}
 
     # MFCCs (20, n_frames)
@@ -296,6 +300,67 @@ def get_descriptor_indices() -> Dict[str, Tuple[int, int]]:
     return indices
 
 
+# Number of 48-d statistic blocks composing the 192-d track vector:
+# [ mean(window_means) | mean(window_stds) | std(window_means) | std(window_stds) ]
+N_STAT_BLOCKS = TRACK_DIM // TOTAL_FRAME_FEATURES  # 192 / 48 = 4
+
+
+def descriptor_slices() -> Dict[str, np.ndarray]:
+    """
+    Column indices of each descriptor within the 192-d track vector.
+
+    The 192-d vector is four stacked 48-d blocks (see ``get_descriptor_indices``).
+    A descriptor occupies the SAME relative slice inside every block, so its full
+    set of columns is its 48-block slice replicated at offsets 0, 48, 96, 144.
+
+    Returns
+    -------
+    Dict[str, np.ndarray]
+        Mapping descriptor name -> int array of length ``4 * dim`` with the
+        absolute column indices of that descriptor in the 192-d vector.
+        For MFCC this has length 80, for ZCR length 4, etc.
+    """
+    block_indices = get_descriptor_indices()
+    slices = {}
+    for name, (start, end) in block_indices.items():
+        cols = []
+        for b in range(N_STAT_BLOCKS):
+            base = b * TOTAL_FRAME_FEATURES
+            cols.extend(range(base + start, base + end))
+        slices[name] = np.asarray(cols, dtype=int)
+    return slices
+
+
+def extract_descriptor(matrix_192: np.ndarray, descriptor_name: str) -> np.ndarray:
+    """
+    Slice the sub-vector of a single descriptor out of a 192-d track matrix.
+
+    Parameters
+    ----------
+    matrix_192 : np.ndarray
+        Array of shape ``(n_tracks, 192)`` (or ``(192,)`` for a single track),
+        following the layout documented in ``descriptor_slices``.
+    descriptor_name : str
+        One of the keys of ``FEATURE_DIMS``.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape ``(n_tracks, 4 * dim)`` (or ``(4 * dim,)`` for 1-D input)
+        with only the columns belonging to ``descriptor_name``.
+    """
+    if descriptor_name not in FEATURE_DIMS:
+        raise ValueError(
+            f"Unknown descriptor {descriptor_name!r}; "
+            f"choose from {list(FEATURE_DIMS.keys())}"
+        )
+    cols = descriptor_slices()[descriptor_name]
+    mat = np.asarray(matrix_192)
+    if mat.ndim == 1:
+        return mat[cols]
+    return mat[:, cols]
+
+
 def load_and_preprocess(filepath: str, sr: int = SR, top_db: float = 20.0) -> np.ndarray:
     """
     Load audio file, resample to mono at target sr, and trim silence.
@@ -314,6 +379,7 @@ def load_and_preprocess(filepath: str, sr: int = SR, top_db: float = 20.0) -> np
     np.ndarray
         Preprocessed audio signal.
     """
+    import librosa  # lazy: only needed for audio extraction
     y, _ = librosa.load(filepath, sr=sr, mono=True)
     y, _ = librosa.effects.trim(y, top_db=top_db)
     return y

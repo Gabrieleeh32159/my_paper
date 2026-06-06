@@ -1,3 +1,1 @@
-# TSI Multi-Scale Feature Pipeline
-# Utility modules for the paper:
-# "Sensibilidad Temporal de Descriptores de Audio Artesanales"
+"""TSI experiments package (redesigned payoff method). See paper/proposal.tex."""

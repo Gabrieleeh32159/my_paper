@@ -1,0 +1,33 @@
+{
+  "_note": "EXAMPLE/synthetic run \u2014 overwritten by 02_tsi_and_fusion.ipynb",
+  "seed": 42,
+  "primary_clf": "logreg_example (stand-in)",
+  "classifiers": [
+    "logreg_example"
+  ],
+  "n_inner": 2,
+  "n_boot": 300,
+  "n_perm": 20,
+  "baseline": "medium",
+  "scales_by_dataset": {
+    "gtzan_example": [
+      "short",
+      "medium",
+      "long"
+    ],
+    "irmas_example": [
+      "short",
+      "medium"
+    ]
+  },
+  "fold_scheme": {
+    "gtzan_example": "4-fold stratified CV (synthetic)",
+    "irmas_example": "4-fold stratified CV (synthetic)"
+  },
+  "classifier_hyperparams": {
+    "logreg_example": {
+      "calibration": "sigmoid/cv3",
+      "note": "real runs use XGBoost n_estimators=500, max_depth=6, lr=0.1"
+    }
+  }
+}

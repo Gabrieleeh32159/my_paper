@@ -1,214 +1,122 @@
 """
-Feature importance analysis.
+Feature-importance analysis -- CORROBORATIVE only.
 
-Implements:
-1. Permutation Importance (PI) - primary method.
-2. Mean Decrease in Impurity (MDI) - secondary (from RF).
-3. Scale-conditioned importance aggregation.
+Per ``paper/proposal.tex`` (Sec. Analisis de importancia), this produces a 7x3
+*importance* matrix (descriptor x scale) from the multivariate model, distinct
+from the univariate-calibrated *gain* matrix that governs the TSI. Importance
+*complements and corroborates* the gain analysis; it does NOT govern the fusion
+strategies.
+
+Methods (decreasing statistical reliability):
+1. **Permutation Importance (PI)** -- primary. Drop in F1-macro when each feature
+   group is permuted (30 repeats), on the best classifier per task.
+2. **Mean Decrease in Impurity (MDI)** -- secondary, from Random Forest.
+3. **Scale-conditioned importance** -- group early-fusion (576-d) columns by their
+   scale of origin and aggregate, with bootstrap CIs.
 """
 
+from __future__ import annotations
+
 import numpy as np
-from typing import Dict, Tuple
-from sklearn.inspection import permutation_importance
-from .features import FEATURE_DIMS, SCALES
+from typing import Dict, Optional, Sequence, Callable
+
+from .features import FEATURE_DIMS, descriptor_slices, TRACK_DIM
+from .tsi import SCALE_ORDER
 
 
-def compute_permutation_importance(
-    classifier,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+def _f1_macro(y_true, proba, task_type):
+    if task_type == "multilabel":
+        from sklearn.metrics import f1_score
+        pred = (np.asarray(proba) >= 0.5).astype(int)
+        return float(f1_score(y_true, pred, average="macro", zero_division=0))
+    from sklearn.metrics import f1_score
+    pred = np.asarray(proba).argmax(axis=1)
+    return float(f1_score(y_true, pred, average="macro"))
+
+
+def permutation_importance_grouped(
+    clf,
+    X: np.ndarray,
+    y: np.ndarray,
+    groups: Dict[str, np.ndarray],
+    task_type: str = "multiclass",
     n_repeats: int = 30,
-    scoring: str = 'f1_macro',
-    random_state: int = 42
-) -> Dict:
+    seed: int = 42,
+) -> Dict[str, Dict[str, float]]:
+    """Group-wise permutation importance = drop in F1-macro when a group permutes.
+
+    ``groups`` maps a name -> column indices permuted together (e.g. one
+    descriptor, or one descriptor-at-one-scale). Returns per group ``{'mean':,
+    'std':}`` over ``n_repeats`` permutations.
     """
-    Compute permutation importance for all features.
+    rng = np.random.RandomState(seed)
+    base = _f1_macro(y, clf.predict_proba(X), task_type)
+    out = {}
+    for name, cols in groups.items():
+        drops = []
+        for _ in range(n_repeats):
+            Xp = X.copy()
+            perm = rng.permutation(X.shape[0])
+            Xp[:, cols] = Xp[perm][:, cols]
+            drops.append(base - _f1_macro(y, clf.predict_proba(Xp), task_type))
+        out[name] = {"mean": float(np.mean(drops)), "std": float(np.std(drops))}
+    return out
 
-    Parameters
-    ----------
-    classifier : fitted classifier with predict method.
-    X_test : np.ndarray
-        Test features.
-    y_test : np.ndarray
-        Test labels.
-    n_repeats : int
-        Number of permutation repetitions.
-    scoring : str
-        Scoring metric.
 
-    Returns
-    -------
-    Dict with keys: importances_mean, importances_std, importances (raw).
+def mdi_by_group(feature_importances: np.ndarray,
+                 groups: Dict[str, np.ndarray]) -> Dict[str, float]:
+    """Sum of MDI importances within each column group."""
+    fi = np.asarray(feature_importances, dtype=float)
+    return {name: float(fi[cols].sum()) for name, cols in groups.items()}
+
+
+def early_fusion_groups(scales: Sequence[str] = tuple(SCALE_ORDER)
+                        ) -> Dict[str, np.ndarray]:
+    """Column groups for the 576-d early-fusion vector, keyed ``"descriptor@scale"``.
+
+    Scale ``s_i`` occupies columns ``[i*192, (i+1)*192)``; within that block the
+    descriptor slices follow the canonical 192-d layout.
     """
-    result = permutation_importance(
-        classifier, X_test, y_test,
-        n_repeats=n_repeats,
-        scoring=scoring,
-        random_state=random_state,
-        n_jobs=-1
-    )
-
-    return {
-        'importances_mean': result.importances_mean,
-        'importances_std': result.importances_std,
-        'importances': result.importances,
-    }
-
-
-def compute_mdi_importance(rf_classifier) -> np.ndarray:
-    """
-    Extract Mean Decrease in Impurity from a fitted Random Forest.
-
-    Parameters
-    ----------
-    rf_classifier : RFClassifier instance (fitted).
-
-    Returns
-    -------
-    np.ndarray
-        Feature importances from MDI.
-    """
-    return rf_classifier.feature_importances_
-
-
-def aggregate_importance_by_descriptor(
-    importances: np.ndarray,
-    vector_dim: int = 192
-) -> Dict[str, float]:
-    """
-    Aggregate feature importances by descriptor name.
-
-    The 192-d vector has 4 blocks of 48 features (mean_mean, mean_std, std_mean, std_std).
-    Each 48-d block follows FEATURE_DIMS order.
-
-    Parameters
-    ----------
-    importances : np.ndarray
-        Per-feature importance values (192-d for single-scale, 576-d for early fusion).
-    vector_dim : int
-        Dimension per scale (192).
-
-    Returns
-    -------
-    Dict[str, float]
-        Aggregated importance per descriptor.
-    """
-    n_scales = len(importances) // vector_dim
-    block_size = sum(FEATURE_DIMS.values())  # 48
-
-    desc_importance = {name: 0.0 for name in FEATURE_DIMS.keys()}
-
-    for scale_idx in range(n_scales):
-        base = scale_idx * vector_dim
-        for block_offset in [0, block_size, 2 * block_size, 3 * block_size]:
-            feat_offset = 0
-            for name, dim in FEATURE_DIMS.items():
-                start = base + block_offset + feat_offset
-                end = start + dim
-                desc_importance[name] += np.sum(importances[start:end])
-                feat_offset += dim
-
-    return desc_importance
-
-
-def aggregate_importance_by_scale(
-    importances: np.ndarray,
-    vector_dim: int = 192
-) -> Dict[str, float]:
-    """
-    Aggregate feature importances by temporal scale (for early fusion 576-d vector).
-
-    Parameters
-    ----------
-    importances : np.ndarray
-        Per-feature importance values (576-d for early fusion).
-    vector_dim : int
-        Dimension per scale (192).
-
-    Returns
-    -------
-    Dict[str, float]
-        Aggregated importance per scale.
-    """
-    scale_names = list(SCALES.keys())
-    scale_importance = {}
-
-    for i, scale in enumerate(scale_names):
-        start = i * vector_dim
-        end = start + vector_dim
-        scale_importance[scale] = np.sum(importances[start:end])
-
-    return scale_importance
+    scales = list(scales)
+    base = descriptor_slices()
+    groups = {}
+    for i, s in enumerate(scales):
+        offset = i * TRACK_DIM
+        for f in FEATURE_DIMS:
+            groups[f"{f}@{s}"] = base[f] + offset
+    return groups
 
 
 def aggregate_importance_by_descriptor_and_scale(
-    importances: np.ndarray,
-    vector_dim: int = 192
+    importance_by_group: Dict[str, Dict[str, float]],
+    scales: Sequence[str] = tuple(SCALE_ORDER),
 ) -> Dict[str, Dict[str, float]]:
+    """Reshape ``"descriptor@scale"`` importances into a 7x3 nested matrix.
+
+    Returns ``{descriptor: {scale: mean_importance}}``.
     """
-    Build the 7×3 importance matrix (descriptor × scale) for early fusion.
-
-    Parameters
-    ----------
-    importances : np.ndarray
-        Per-feature importance values (576-d for early fusion).
-
-    Returns
-    -------
-    Dict[str, Dict[str, float]]
-        Nested dict: descriptor_name -> scale_name -> importance.
-    """
-    scale_names = list(SCALES.keys())
-    block_size = sum(FEATURE_DIMS.values())  # 48
-    matrix = {name: {} for name in FEATURE_DIMS.keys()}
-
-    for scale_idx, scale_name in enumerate(scale_names):
-        base = scale_idx * vector_dim
-        for block_offset in [0, block_size, 2 * block_size, 3 * block_size]:
-            feat_offset = 0
-            for name, dim in FEATURE_DIMS.items():
-                start = base + block_offset + feat_offset
-                end = start + dim
-                if scale_name not in matrix[name]:
-                    matrix[name][scale_name] = 0.0
-                matrix[name][scale_name] += np.sum(importances[start:end])
-                feat_offset += dim
-
+    scales = list(scales)
+    matrix = {f: {s: 0.0 for s in scales} for f in FEATURE_DIMS}
+    for key, val in importance_by_group.items():
+        if "@" not in key:
+            continue
+        f, s = key.split("@", 1)
+        if f in matrix and s in matrix[f]:
+            matrix[f][s] = float(val["mean"] if isinstance(val, dict) else val)
     return matrix
 
 
 def bootstrap_importance_ci(
-    importances_raw: np.ndarray,
-    n_bootstrap: int = 1000,
-    ci: float = 0.95,
-    random_state: int = 42
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Compute bootstrap confidence intervals for feature importances.
-
-    Parameters
-    ----------
-    importances_raw : np.ndarray
-        Raw permutation importance matrix (n_features, n_repeats).
-    n_bootstrap : int
-        Number of bootstrap samples.
-    ci : float
-        Confidence level.
-
-    Returns
-    -------
-    Tuple of (lower_bound, upper_bound) arrays.
-    """
-    rng = np.random.RandomState(random_state)
-    n_features, n_repeats = importances_raw.shape
-
-    boot_means = np.zeros((n_bootstrap, n_features))
-    for b in range(n_bootstrap):
-        idx = rng.choice(n_repeats, size=n_repeats, replace=True)
-        boot_means[b] = importances_raw[:, idx].mean(axis=1)
-
-    alpha = (1 - ci) / 2
-    lower = np.percentile(boot_means, alpha * 100, axis=0)
-    upper = np.percentile(boot_means, (1 - alpha) * 100, axis=0)
-
-    return lower, upper
+    per_fold_importance: Sequence[float],
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    seed: int = 0,
+):
+    """Bootstrap CI for an importance value aggregated across folds/partitions."""
+    vals = np.asarray(per_fold_importance, dtype=float)
+    if len(vals) == 0:
+        return (np.nan, np.nan)
+    rng = np.random.RandomState(seed)
+    boot = [vals[rng.randint(0, len(vals), len(vals))].mean() for _ in range(n_boot)]
+    return (float(np.percentile(boot, 100 * alpha / 2)),
+            float(np.percentile(boot, 100 * (1 - alpha / 2))))

@@ -1,4 +1,8 @@
 experiments/data
-experiments/venv
+experiments/.venv
+experiments/.pytest_cache
 experiments/*.pt
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
 CLAUDE.md

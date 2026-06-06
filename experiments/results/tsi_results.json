@@ -1,311 +1,739 @@
 {
-  "gtzan": {
-    "tsi_scores": {
-      "mfcc": 0.3804522613065322,
-      "chroma": 0.36030150753768864,
-      "spectral_centroid": 0.6511557788944724,
-      "spectral_contrast": 0.6712060301507539,
-      "spectral_rolloff": 0.4003517587939699,
-      "zcr": 0.5102010050251256,
-      "tonnetz": 1.3111055276381909
-    },
-    "tsi_std": {
-      "mfcc": 0.112535037850761,
-      "chroma": 0.21532343746712418,
-      "spectral_centroid": 0.27777890883557727,
-      "spectral_contrast": 0.3780002777706618,
-      "spectral_rolloff": 0.1973963501628122,
-      "zcr": 0.34680763904000533,
-      "tonnetz": 0.19985136266084108
-    },
-    "accuracy_matrix": {
+  "gtzan_example": {
+    "tau": 0.028558657396865063,
+    "baseline": "medium",
+    "scales": [
+      "short",
+      "medium",
+      "long"
+    ],
+    "descriptors": {
       "mfcc": {
-        "short": 0.6937085427135679,
-        "medium": 0.6836633165829145,
-        "long": 0.6656783919597989
+        "k_star": "short",
+        "G_kstar": 0.516547802645084,
+        "G_baseline": -0.011683893520174099,
+        "payoff": 0.5282316961652582,
+        "payoff_ci": [
+          0.5081272843989026,
+          0.5416877095400767
+        ],
+        "tsi_rel": 0.9986915213344381,
+        "tsi_rel_ci": [
+          0.9959782905455303,
+          1.0
+        ],
+        "payoff_insample": 0.5282316961652582,
+        "residual_optimism": 0.0,
+        "payoff_loo": 0.5195414003963982,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.516547802645084,
+            "std": 0.00814563335883356
+          },
+          "medium": {
+            "mean": 0.0006758917795040287,
+            "std": 0.0011706789025191183
+          },
+          "long": {
+            "mean": 0.008470880851057988,
+            "std": 0.008919357544131689
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": true,
+        "tsi": 0.5282316961652582,
+        "tsi_rel_reported": 0.9986915213344381,
+        "exploitable": true
       },
       "chroma": {
-        "short": 0.5074924623115578,
-        "medium": 0.47846231155778896,
-        "long": 0.48247738693467335
+        "k_star": "medium",
+        "G_kstar": 0.49583248532825697,
+        "G_baseline": 0.49583248532825697,
+        "payoff": 0.0,
+        "payoff_ci": [
+          0.0,
+          0.0
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "payoff_insample": 0.0,
+        "residual_optimism": 0.0,
+        "payoff_loo": 0.5090972537688266,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0,
+            "std": 0.0
+          },
+          "medium": {
+            "mean": 0.49583248532825697,
+            "std": 0.035433147845238246
+          },
+          "long": {
+            "mean": 0.0017719194913642933,
+            "std": 0.0019015551302050766
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": true,
+        "tsi": 0.0,
+        "tsi_rel_reported": 0.0,
+        "exploitable": false
       },
       "spectral_centroid": {
-        "short": 0.40645728643216084,
-        "medium": 0.3563417085427135,
-        "long": 0.3533869346733668
+        "k_star": "long",
+        "G_kstar": -0.008324252126221177,
+        "G_baseline": -0.008119097226290783,
+        "payoff": -0.00020515489993039315,
+        "payoff_ci": [
+          -0.010339153923093092,
+          0.011808102839711676
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "payoff_insample": 0.009928851307064113,
+        "residual_optimism": 0.010134006206994506,
+        "payoff_loo": 0.002730375984067668,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0003720825851996068,
+            "std": 0.0006444659421772945
+          },
+          "medium": {
+            "mean": 0.0034000969889142474,
+            "std": 0.00588914073546143
+          },
+          "long": {
+            "mean": 0.0,
+            "std": 0.0
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "spectral_contrast": {
-        "short": 0.6276733668341709,
-        "medium": 0.5755527638190955,
-        "long": 0.5675879396984925
+        "k_star": "long",
+        "G_kstar": -0.002942377703864879,
+        "G_baseline": 0.009107931529012792,
+        "payoff": -0.01205030923287767,
+        "payoff_ci": [
+          -0.03420748661185852,
+          0.010106868146103176
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          1.0
+        ],
+        "payoff_insample": 0.010663723053437046,
+        "residual_optimism": 0.022714032286314717,
+        "payoff_loo": -0.01158034091454671,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0015551863747074735,
+            "std": 0.0017556843729254368
+          },
+          "medium": {
+            "mean": 0.009782651244624463,
+            "std": 0.009416882960324677
+          },
+          "long": {
+            "mean": 0.015747307122640414,
+            "std": 0.00629648492945724
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "spectral_rolloff": {
-        "short": 0.39137688442211055,
-        "medium": 0.38134170854271354,
-        "long": 0.37237688442211053
+        "k_star": "short",
+        "G_kstar": -0.00916480045757248,
+        "G_baseline": -0.005922504839935283,
+        "payoff": -0.0032422956176371975,
+        "payoff_ci": [
+          -0.020749400952136454,
+          0.007736752468279653
+        ],
+        "tsi_rel": 1.0,
+        "tsi_rel_ci": [
+          1.0,
+          1.0
+        ],
+        "payoff_insample": 0.008060333584152896,
+        "residual_optimism": 0.011302629201790093,
+        "payoff_loo": -0.004824167214454847,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0012887883932659883,
+            "std": 0.0019243486885275006
+          },
+          "medium": {
+            "mean": 0.0,
+            "std": 0.0
+          },
+          "long": {
+            "mean": 0.0020577891205963705,
+            "std": 0.0035641953081353935
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "zcr": {
-        "short": 0.33834170854271356,
-        "medium": 0.327321608040201,
-        "long": 0.35432160804020096
+        "k_star": "long",
+        "G_kstar": -0.02539657961398506,
+        "G_baseline": -0.006133407545681618,
+        "payoff": -0.01926317206830344,
+        "payoff_ci": [
+          -0.06175153391771901,
+          0.025513199788963627
+        ],
+        "tsi_rel": 0.6920274230450605,
+        "tsi_rel_ci": [
+          1.0,
+          1.0
+        ],
+        "payoff_insample": 0.01263454056158042,
+        "residual_optimism": 0.03189771262988386,
+        "payoff_loo": -0.02368401843962374,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0011559790235388945,
+            "std": 0.0013647756893670176
+          },
+          "medium": {
+            "mean": 0.0015241029555819463,
+            "std": 0.002639823755033823
+          },
+          "long": {
+            "mean": 0.006578594804208221,
+            "std": 0.004279770979008626
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "tonnetz": {
-        "short": 0.5295025125628141,
-        "medium": 0.45745728643216077,
-        "long": 0.398391959798995
+        "k_star": "medium",
+        "G_kstar": -0.01617543209808714,
+        "G_baseline": 0.00030171914634985475,
+        "payoff": -0.016477151244436994,
+        "payoff_ci": [
+          -0.03295430248887399,
+          0.0
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "payoff_insample": 0.0,
+        "residual_optimism": 0.016477151244436994,
+        "payoff_loo": -0.00584205188824731,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0,
+            "std": 0.0
+          },
+          "medium": {
+            "mean": 0.00582683665421263,
+            "std": 0.005827827691133085
+          },
+          "long": {
+            "mean": 0.0002486120025135541,
+            "std": 0.0003750045604391125
+          }
+        },
+        "tau": 0.028558657396865063,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       }
     },
-    "accuracy_std": {
+    "scale_difference": {
       "mfcc": {
-        "short": 0.012450427953826625,
-        "medium": 0.016347702980621062,
-        "long": 0.024605054395397282
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 6.5,
+        "p_value": 0.03877420783172202,
+        "significant": true,
+        "nemenyi": {
+          "short": {
+            "short": 1.0,
+            "medium": 0.0399849863424524,
+            "long": 0.23129961523062548
+          },
+          "medium": {
+            "short": 0.0399849863424524,
+            "medium": 1.0,
+            "long": 1.0
+          },
+          "long": {
+            "short": 0.23129961523062548,
+            "medium": 1.0,
+            "long": 1.0
+          }
+        }
       },
       "chroma": {
-        "short": 0.028639594234560237,
-        "medium": 0.01581808179980932,
-        "long": 0.009498851301929106
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 6.5,
+        "p_value": 0.03877420783172202,
+        "significant": true,
+        "nemenyi": {
+          "short": {
+            "short": 1.0,
+            "medium": 0.0399849863424524,
+            "long": 1.0
+          },
+          "medium": {
+            "short": 0.0399849863424524,
+            "medium": 1.0,
+            "long": 0.23129961523062548
+          },
+          "long": {
+            "short": 1.0,
+            "medium": 0.23129961523062548,
+            "long": 1.0
+          }
+        }
       },
       "spectral_centroid": {
-        "short": 0.0327055119800304,
-        "medium": 0.027450544357914292,
-        "long": 0.023481113535377563
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 2.0,
+        "p_value": 0.36787944117144245,
+        "significant": false
       },
       "spectral_contrast": {
-        "short": 0.03867458130752214,
-        "medium": 0.018536019000962155,
-        "long": 0.012591605199575693
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 4.5,
+        "p_value": 0.10539922456186433,
+        "significant": false
       },
       "spectral_rolloff": {
-        "short": 0.026504864948967023,
-        "medium": 0.02272546937711389,
-        "long": 0.014100690550578795
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 3.5,
+        "p_value": 0.1737739434504451,
+        "significant": false
       },
       "zcr": {
-        "short": 0.0380504125218572,
-        "medium": 0.04303383801572053,
-        "long": 0.027614206130041462
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 6.0,
+        "p_value": 0.04978706836786395,
+        "significant": true,
+        "nemenyi": {
+          "short": {
+            "short": 1.0,
+            "medium": 1.0,
+            "long": 0.10168456057406772
+          },
+          "medium": {
+            "short": 1.0,
+            "medium": 1.0,
+            "long": 0.10168456057406772
+          },
+          "long": {
+            "short": 0.10168456057406772,
+            "medium": 0.10168456057406772,
+            "long": 1.0
+          }
+        }
       },
       "tonnetz": {
-        "short": 0.04284698760543065,
-        "medium": 0.023979309785636248,
-        "long": 0.02569714328777021
+        "test": "friedman",
+        "scales": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "n_folds": 4,
+        "statistic": 6.5,
+        "p_value": 0.03877420783172202,
+        "significant": true,
+        "nemenyi": {
+          "short": {
+            "short": 1.0,
+            "medium": 0.0399849863424524,
+            "long": 1.0
+          },
+          "medium": {
+            "short": 0.0399849863424524,
+            "medium": 1.0,
+            "long": 0.23129961523062548
+          },
+          "long": {
+            "short": 1.0,
+            "medium": 0.23129961523062548,
+            "long": 1.0
+          }
+        }
       }
-    },
-    "optimal_scales": {
-      "mfcc": "short",
-      "chroma": "short",
-      "spectral_centroid": "short",
-      "spectral_contrast": "short",
-      "spectral_rolloff": "short",
-      "zcr": "long",
-      "tonnetz": "short"
     }
   },
-  "fma_small": {
-    "tsi_scores": {
-      "mfcc": 0.19108943089430888,
-      "chroma": 0.24412320200125076,
-      "spectral_centroid": 0.33418198874296434,
-      "spectral_contrast": 0.2671457160725453,
-      "spectral_rolloff": 0.22713133208255157,
-      "zcr": 0.20210631644777993,
-      "tonnetz": 0.5392470293933707
-    },
-    "tsi_std": {
-      "mfcc": 0.04683807211333595,
-      "chroma": 0.07021889804435485,
-      "spectral_centroid": 0.10150504522980576,
-      "spectral_contrast": 0.0981945683647853,
-      "spectral_rolloff": 0.1146535853011199,
-      "zcr": 0.03700530780967172,
-      "tonnetz": 0.10842574872459829
-    },
-    "accuracy_matrix": {
+  "irmas_example": {
+    "tau": 0.03227594283481448,
+    "baseline": "medium",
+    "scales": [
+      "short",
+      "medium"
+    ],
+    "descriptors": {
       "mfcc": {
-        "short": 0.5293910256410256,
-        "medium": 0.517385162601626,
-        "long": 0.5068807066916823
+        "k_star": "short",
+        "G_kstar": 0.497935559157912,
+        "G_baseline": -0.005891439474054017,
+        "payoff": 0.503826998631966,
+        "payoff_ci": [
+          0.4935516845726091,
+          0.51274613214409
+        ],
+        "tsi_rel": 0.9974578100572702,
+        "tsi_rel_ci": [
+          0.9923630519639461,
+          1.0
+        ],
+        "payoff_insample": 0.503826998631966,
+        "residual_optimism": 0.0,
+        "payoff_loo": 0.503826998631966,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.497935559157912,
+            "std": 0.004979882914170138
+          },
+          "medium": {
+            "mean": 0.001265846770618806,
+            "std": 0.0021925109213087584
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": true,
+        "tsi": 0.503826998631966,
+        "tsi_rel_reported": 0.9974578100572702,
+        "exploitable": true
       },
       "chroma": {
-        "short": 0.40407715759849905,
-        "medium": 0.38294215134459036,
-        "long": 0.37481253908692935
+        "k_star": "medium",
+        "G_kstar": 0.46248264839954834,
+        "G_baseline": 0.46248264839954834,
+        "payoff": 0.0,
+        "payoff_ci": [
+          0.0,
+          0.0
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "payoff_insample": 0.0,
+        "residual_optimism": 0.0,
+        "payoff_loo": 0.4713161589120787,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.00034472464105625433,
+            "std": 0.0005970805929303766
+          },
+          "medium": {
+            "mean": 0.46248264839954834,
+            "std": 0.019326798340621173
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": true,
+        "tsi": 0.0,
+        "tsi_rel_reported": 0.0,
+        "exploitable": false
       },
       "spectral_centroid": {
-        "short": 0.3310423702313946,
-        "medium": 0.31565924015009383,
-        "long": 0.2931470450281426
+        "k_star": "medium",
+        "G_kstar": -0.023006621615934142,
+        "G_baseline": -0.01361783490484797,
+        "payoff": -0.009388786711086172,
+        "payoff_ci": [
+          -0.020057274488086464,
+          0.0
+        ],
+        "tsi_rel": null,
+        "tsi_rel_ci": [
+          NaN,
+          NaN
+        ],
+        "payoff_insample": 0.01245767486059618,
+        "residual_optimism": 0.021846461571682352,
+        "payoff_loo": -0.021846461571682352,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0,
+            "std": 0.0
+          },
+          "medium": {
+            "mean": 0.0025180361325236045,
+            "std": 0.004361366516825122
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "spectral_contrast": {
-        "short": 0.482994684177611,
-        "medium": 0.4596065509693559,
-        "long": 0.4496014696685428
+        "k_star": "medium",
+        "G_kstar": -0.009406054276034498,
+        "G_baseline": -0.013258700873072266,
+        "payoff": 0.0038526465970377677,
+        "payoff_ci": [
+          0.0,
+          0.011557939791113303
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "payoff_insample": 0.010468391800597165,
+        "residual_optimism": 0.006615745203559398,
+        "payoff_loo": 0.00016177219318189162,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0015827413193908457,
+            "std": 0.0027413883804235446
+          },
+          "medium": {
+            "mean": 0.0009823481186251037,
+            "std": 0.0017014768521783784
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "spectral_rolloff": {
-        "short": 0.3166607254534084,
-        "medium": 0.30540345528455287,
-        "long": 0.2886443089430894
+        "k_star": "medium",
+        "G_kstar": -0.0326252056674724,
+        "G_baseline": -0.028611942900113374,
+        "payoff": -0.004013262767359027,
+        "payoff_ci": [
+          -0.009605535576796387,
+          0.0
+        ],
+        "tsi_rel": null,
+        "tsi_rel_ci": [
+          NaN,
+          NaN
+        ],
+        "payoff_insample": 0.023661826382863377,
+        "residual_optimism": 0.027675089150222404,
+        "payoff_loo": -0.027675089150222404,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.001116900650379643,
+            "std": 0.0019345286734642649
+          },
+          "medium": {
+            "mean": 0.0,
+            "std": 0.0
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "zcr": {
-        "short": 0.2911461851156973,
-        "medium": 0.2945235303314572,
-        "long": 0.2742631332082551
+        "k_star": "short",
+        "G_kstar": 0.006440390836307847,
+        "G_baseline": 0.001310085574406955,
+        "payoff": 0.0051303052619008915,
+        "payoff_ci": [
+          -0.0004419815231291313,
+          0.010760828248888535
+        ],
+        "tsi_rel": 0.2949064465562093,
+        "tsi_rel_ci": [
+          0.0,
+          1.0
+        ],
+        "payoff_insample": 0.005351296023465457,
+        "residual_optimism": 0.00022099076156456565,
+        "payoff_loo": 0.00919380639994094,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.0030249473387838066,
+            "std": 0.0017772002056524328
+          },
+          "medium": {
+            "mean": 0.0045410780603391265,
+            "std": 0.005577440261001391
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       },
       "tonnetz": {
-        "short": 0.40907919011882427,
-        "medium": 0.3635587085678549,
-        "long": 0.34167331144465296
+        "k_star": "medium",
+        "G_kstar": -0.005560960917220831,
+        "G_baseline": -0.00546131017508894,
+        "payoff": -9.96507421318904e-05,
+        "payoff_ci": [
+          -0.0022065986209429955,
+          0.0012717642630315495
+        ],
+        "tsi_rel": 0.0,
+        "tsi_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "payoff_insample": 0.0033479782747726228,
+        "residual_optimism": 0.003447629016904513,
+        "payoff_loo": -0.0007074312286731999,
+        "gain_matrix": {
+          "short": {
+            "mean": 0.003380862278541702,
+            "std": 0.00338945590771854
+          },
+          "medium": {
+            "mean": 0.0025112441424197107,
+            "std": 0.004349602444880672
+          }
+        },
+        "tau": 0.03227594283481448,
+        "gate_pass": false,
+        "tsi": 0.0,
+        "tsi_rel_reported": null,
+        "exploitable": false
       }
     },
-    "accuracy_std": {
+    "scale_difference": {
       "mfcc": {
-        "short": 0.008713550048323353,
-        "medium": 0.015102928006086598,
-        "long": 0.012342077638936069
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 0.0,
+        "p_value": 0.125,
+        "significant": false
       },
       "chroma": {
-        "short": 0.007119011406445875,
-        "medium": 0.007073588227233741,
-        "long": 0.004564567266789216
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 0.0,
+        "p_value": 0.125,
+        "significant": false
       },
       "spectral_centroid": {
-        "short": 0.018674134728446843,
-        "medium": 0.011712386804038223,
-        "long": 0.007505856383851117
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 4.0,
+        "p_value": 0.875,
+        "significant": false
       },
       "spectral_contrast": {
-        "short": 0.016655447966458656,
-        "medium": 0.011725924919774163,
-        "long": 0.013985492699402972
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 2.0,
+        "p_value": 0.375,
+        "significant": false
       },
       "spectral_rolloff": {
-        "short": 0.011556569445240049,
-        "medium": 0.010110850870054772,
-        "long": 0.012130118771489505
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 3.0,
+        "p_value": 0.625,
+        "significant": false
       },
       "zcr": {
-        "short": 0.008672963106389124,
-        "medium": 0.009733479881393002,
-        "long": 0.005839732444762342
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 5.0,
+        "p_value": 1.0,
+        "significant": false
       },
       "tonnetz": {
-        "short": 0.010279956318515674,
-        "medium": 0.013320342378976417,
-        "long": 0.011178576669065885
+        "test": "wilcoxon",
+        "scales": [
+          "short",
+          "medium"
+        ],
+        "statistic": 5.0,
+        "p_value": 1.0,
+        "significant": false
       }
-    },
-    "optimal_scales": {
-      "mfcc": "short",
-      "chroma": "short",
-      "spectral_centroid": "short",
-      "spectral_contrast": "short",
-      "spectral_rolloff": "short",
-      "zcr": "medium",
-      "tonnetz": "short"
-    }
-  },
-  "irmas": {
-    "tsi_scores": {
-      "mfcc": 0.22253130577669494,
-      "chroma": 0.2577194945746098,
-      "spectral_centroid": 0.27238610930107365,
-      "spectral_contrast": 0.3016686970564072,
-      "spectral_rolloff": 0.240158512054849,
-      "zcr": 0.3719437912570476,
-      "tonnetz": 0.4158852027084454
-    },
-    "tsi_std": {
-      "mfcc": 0.10019191938579722,
-      "chroma": 0.06588975515250241,
-      "spectral_centroid": 0.12657598911928333,
-      "spectral_contrast": 0.1729846253455104,
-      "spectral_rolloff": 0.07094104322996773,
-      "zcr": 0.07675160706743007,
-      "tonnetz": 0.14313508366672714
-    },
-    "accuracy_matrix": {
-      "mfcc": {
-        "short": 0.7023397880839731,
-        "medium": 0.7111238207213078,
-        "long": 0.7140479360852197
-      },
-      "chroma": {
-        "short": 0.4773744935830241,
-        "medium": 0.46751777771481995,
-        "long": 0.4563390656429725
-      },
-      "spectral_centroid": {
-        "short": 0.3583594214805791,
-        "medium": 0.38099130237697254,
-        "long": 0.36847572031617415
-      },
-      "spectral_contrast": {
-        "short": 0.6000988044309715,
-        "medium": 0.5939793041901578,
-        "long": 0.607025738731337
-      },
-      "spectral_rolloff": {
-        "short": 0.37486719834546844,
-        "medium": 0.39004766694053317,
-        "long": 0.3807218035527099
-      },
-      "zcr": {
-        "short": 0.3112353741111143,
-        "medium": 0.3261438649176984,
-        "long": 0.34478213445901923
-      },
-      "tonnetz": {
-        "short": 0.46032559424313674,
-        "medium": 0.44355646372212937,
-        "long": 0.4302391138057059
-      }
-    },
-    "accuracy_std": {
-      "mfcc": {
-        "short": 0.012802123697857638,
-        "medium": 0.013600373936387465,
-        "long": 0.026176207146535426
-      },
-      "chroma": {
-        "short": 0.012026070690662619,
-        "medium": 0.01373947264781979,
-        "long": 0.014104917296543359
-      },
-      "spectral_centroid": {
-        "short": 0.004749260538786878,
-        "medium": 0.013612870382978088,
-        "long": 0.005888223021790259
-      },
-      "spectral_contrast": {
-        "short": 0.0230570270230668,
-        "medium": 0.0180618247249412,
-        "long": 0.022464890210549125
-      },
-      "spectral_rolloff": {
-        "short": 0.01163510570313517,
-        "medium": 0.018164894511491208,
-        "long": 0.016315433775415854
-      },
-      "zcr": {
-        "short": 0.002126577080553802,
-        "medium": 0.00709879702941785,
-        "long": 0.006913346562454595
-      },
-      "tonnetz": {
-        "short": 0.021638362236217828,
-        "medium": 0.015475373254750662,
-        "long": 0.02111913031540054
-      }
-    },
-    "optimal_scales": {
-      "mfcc": "long",
-      "chroma": "short",
-      "spectral_centroid": "medium",
-      "spectral_contrast": "long",
-      "spectral_rolloff": "medium",
-      "zcr": "long",
-      "tonnetz": "short"
     }
   }
 }

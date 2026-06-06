@@ -1,335 +1,417 @@
 """
-Temporal Sensitivity Index (TSI) computation.
+Temporal Sensitivity Index (TSI) -- *redesigned payoff* definition.
 
-The TSI is defined on the *normalized information gain* of each descriptor,
-which uses the full predicted probability distribution (log-loss) rather than
-the thresholded accuracy:
+This module implements the TSI exactly as specified in ``paper/proposal.tex``
+(Sec. "Indice de Sensibilidad Temporal"). It is a *payoff* metric, NOT a
+dispersion statistic:
 
-    G(f, k) = 1 - L(f, k) / L_chance
+    G(f, k)    = 1 - L(f, k) / L_chance            # normalized information gain
+    k*(f)      = argmax_k G(f, k)   via NESTED selection (inner folds)
+    TSI(f)     = [ G(f, k*) - G(f, k_bar) ] * 1[ G(f, k*) > tau ]
+    TSI_rel(f) = ( G(f, k*) - G(f, k_bar) ) / G(f, k*)   # secondary, gated only
 
-    TSI(f) = std_k G(f, k)   [population std, ddof=0]
+with convention baseline ``k_bar = 'medium'`` (2 s).
 
-where L(f, k) is the (clipped) log-loss of a calibrated classifier trained on
-descriptor f alone at scale k, and L_chance is the log-loss of the constant
-class-prior predictor. Because G is the fraction of label uncertainty resolved,
-the TSI is the RMS deviation of the information gain across scales — a measure
-of how much the discriminability of the descriptor varies with temporal scale.
+Design contract (paper): ``k*`` is defined ONCE, by nested selection, and used
+*identically* in the point estimate, the bootstrap CI, the informativeness gate
+``tau`` and the fusion strategies. The single source of truth for that choice is
+:func:`select_k_star`.
 
-Using std instead of range ensures all K scales contribute to the index, not
-just the two extremes, making TSI less sensitive to a single outlier scale and
-able to distinguish descriptors with identical range but different intermediate
-behaviour.
+The module is split into:
 
-The optimal scale is k*(f) = argmax_k G(f, k) = argmin_k L(f, k).
+* **Pure statistics** over per-fold gain records (:func:`tsi_from_fold_gains`,
+  :func:`gate_threshold`, :func:`bootstrap_ci`, :func:`select_k_star`) -- these
+  are deterministic and unit-tested on synthetic data, with no Drive/classifier
+  dependency.
+* **A driver** (:func:`compute_fold_gains`, :func:`compute_tsi_cv_full`) that
+  trains calibrated classifiers per descriptor / scale / fold to *produce* those
+  gain records on real features.
+
+The legacy dispersion metric ``std_k G`` ("TSD") is intentionally absent.
 """
 
+from __future__ import annotations
+
 import numpy as np
-from typing import Dict, Tuple, List, Optional
-from .features import FEATURE_DIMS, SCALES
-from .fusion import extract_descriptor_from_track_vector
-from .classifiers import get_classifier
-from .evaluation import (
-    class_prior, tag_prevalence, get_proba_in_class_order,
-    normalized_information_gain,
-)
+from typing import Dict, List, Optional, Callable, Sequence
+
+from .features import FEATURE_DIMS, extract_descriptor
+from .evaluation import gain_from_predictions, truncate_gain
+
+SCALE_ORDER = ["short", "medium", "long"]
+BASELINE = "medium"          # k_bar: the 2 s convention the TSI questions
 
 
-def _descriptor_info_gain(
-    X_desc: np.ndarray,
-    labels: np.ndarray,
-    train_idx: np.ndarray,
-    test_idx: np.ndarray,
-    n_classes: int,
-    classifier_name: str,
-    task_type: str,
-    prior: np.ndarray,
-    **clf_kwargs,
-) -> Tuple[float, float]:
-    """Train one classifier on a single descriptor/scale and return (G, log-loss)."""
-    X_train, X_test = X_desc[train_idx], X_desc[test_idx]
-    y_train, y_test = labels[train_idx], labels[test_idx]
+# --------------------------------------------------------------------------- #
+# The single definition of k* (used everywhere: point, CI, gate, fusion)
+# --------------------------------------------------------------------------- #
+def select_k_star(gains_by_scale: Dict[str, float]) -> str:
+    """argmax_k G(f, k). Deterministic tie-break following ``SCALE_ORDER``.
 
-    clf = get_classifier(
-        classifier_name, input_dim=X_train.shape[1],
-        n_classes=n_classes, task_type=task_type, **clf_kwargs
-    )
-    clf.fit(X_train, y_train)
-
-    if task_type == 'multilabel':
-        proba = clf.predict_proba(X_test)
-    else:
-        proba = get_proba_in_class_order(clf, X_test, n_classes)
-
-    g, ll, _ = normalized_information_gain(y_test, proba, prior, task_type)
-    return g, ll
-
-
-def compute_tsi(
-    features: Dict[str, np.ndarray],
-    labels: np.ndarray,
-    n_classes: int,
-    classifier_name: str = 'rf',
-    train_idx: Optional[np.ndarray] = None,
-    test_idx: Optional[np.ndarray] = None,
-    task_type: str = 'multiclass',
-    **clf_kwargs
-) -> Tuple[Dict[str, float], Dict[str, Dict[str, float]], Dict[str, str]]:
+    This is the ONLY place k* is chosen, so the point estimate, the CI, the gate
+    and the fusion strategies all share an identical notion of the optimal scale.
     """
-    Compute the information-gain TSI for each descriptor on a single split.
+    scales = [s for s in SCALE_ORDER if s in gains_by_scale]
+    scales += [s for s in gains_by_scale if s not in scales]
+    best, best_val = scales[0], gains_by_scale[scales[0]]
+    for s in scales[1:]:
+        if gains_by_scale[s] > best_val:
+            best, best_val = s, gains_by_scale[s]
+    return best
 
-    For each descriptor f, trains a classifier using ONLY that descriptor
-    at each scale k, and computes:
-        G(f, k) = 1 - L(f, k) / L_chance
-        TSI(f)  = max_k G(f, k) - min_k G(f, k)
+
+# --------------------------------------------------------------------------- #
+# Bootstrap CI over folds
+# --------------------------------------------------------------------------- #
+def bootstrap_ci(
+    values: Sequence[float],
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    seed: int = 0,
+    statistic: Callable[[np.ndarray], float] = np.mean,
+):
+    """Percentile bootstrap CI of ``statistic`` (default: the mean) over folds.
+
+    Returns ``(low, high)`` at the ``(alpha/2, 1-alpha/2)`` percentiles.
+    """
+    values = np.asarray(values, dtype=float)
+    if len(values) == 0:
+        return (np.nan, np.nan)
+    rng = np.random.RandomState(seed)
+    n = len(values)
+    boot = np.empty(n_boot)
+    for b in range(n_boot):
+        sample = values[rng.randint(0, n, size=n)]
+        boot[b] = statistic(sample)
+    lo = float(np.percentile(boot, 100 * alpha / 2))
+    hi = float(np.percentile(boot, 100 * (1 - alpha / 2)))
+    return (lo, hi)
+
+
+# --------------------------------------------------------------------------- #
+# Pure TSI statistics from per-fold gain records
+# --------------------------------------------------------------------------- #
+def tsi_from_fold_gains(
+    fold_gains: List[Dict[str, Dict[str, float]]],
+    baseline: str = BASELINE,
+    scales: Sequence[str] = tuple(SCALE_ORDER),
+    n_boot: int = 1000,
+    seed: int = 0,
+) -> Dict:
+    """Compute the (un-gated) TSI statistics for one descriptor.
 
     Parameters
     ----------
-    features : Dict[str, np.ndarray]
-        Mapping scale_name -> feature matrix (n_samples, 192).
-    labels : np.ndarray
-        Class labels (n_samples,) for multiclass, or (n_samples, n_tags) for
-        multilabel.
-    n_classes : int
-        Number of classes (multiclass) or tags (multilabel).
-    classifier_name : str
-        Classifier to use ('rf', 'xgb', 'svm', 'mlp'). Multilabel is only
-        supported with 'mlp'.
-    train_idx, test_idx : np.ndarray, optional
-        Split indices. If None, uses a stratified 80/20 split.
-    task_type : str
-        'multiclass' or 'multilabel'.
+    fold_gains : list of dict
+        One entry per outer fold, each ``{'inner': {scale: G}, 'outer': {scale: G}}``.
+        ``inner`` gains come from inner folds of the outer-train set (used ONLY to
+        pick k*); ``outer`` gains are evaluated on the held-out outer fold.
+    baseline : str
+        Convention scale ``k_bar`` (default ``'medium'``).
 
     Returns
     -------
-    tsi_scores : Dict[str, float]
-        Mapping descriptor_name -> TSI value.
-    info_gain_matrix : Dict[str, Dict[str, float]]
-        Mapping descriptor_name -> {scale_name -> normalized information gain}.
-    optimal_scales : Dict[str, str]
-        Mapping descriptor_name -> optimal scale name (argmax G).
+    dict with keys:
+        ``k_star``            -- modal nested k* across folds (for reporting)
+        ``k_star_per_fold``   -- list of per-fold nested k*
+        ``G_kstar``           -- mean outer G at the per-fold nested k* (= G(f,k*))
+        ``G_baseline``        -- mean outer G at the baseline scale
+        ``payoff``            -- point TSI before gating = mean(G(k*_inner)-G(k_bar))
+        ``payoff_per_fold``   -- the per-fold payoffs (for stats / Friedman inputs)
+        ``payoff_ci``         -- 95% bootstrap CI of the payoff
+        ``tsi_rel``           -- relative payoff in [0,1]: (G+(k*)-G+(k_bar))/G+(k*)
+                                 on G truncated at the 0 floor (so it stays bounded
+                                 under imperfect calibration), NaN if G+(k*)<=0
+        ``tsi_rel_ci``        -- bootstrap CI of the relative payoff
+        ``payoff_insample``   -- in-sample payoff (argmax on outer gains: optimistic)
+        ``residual_optimism`` -- payoff_insample - payoff (nested)
+        ``payoff_loo``        -- robustness baseline: G(k*) - mean_{k!=k*} G(k)
+        ``gain_matrix``       -- {scale: {'mean':, 'std':} } truncated for display
     """
-    from sklearn.model_selection import train_test_split
+    scales = [s for s in scales]
+    inner = [fg["inner"] for fg in fold_gains]
+    outer = [fg["outer"] for fg in fold_gains]
 
-    n_samples = features['short'].shape[0]
+    # --- nested k* (one definition) ---
+    kstar_inner = [select_k_star(g) for g in inner]
 
-    # Default split if not provided
-    if train_idx is None or test_idx is None:
-        all_idx = np.arange(n_samples)
-        stratify = labels if task_type == 'multiclass' else None
-        train_idx, test_idx = train_test_split(
-            all_idx, test_size=0.2, stratify=stratify, random_state=42
-        )
+    payoffs, g_kstar_vals, g_base_vals, loo_vals = [], [], [], []
+    for o, ks in zip(outer, kstar_inner):
+        payoffs.append(o[ks] - o[baseline])
+        g_kstar_vals.append(o[ks])
+        g_base_vals.append(o[baseline])
+        others = [o[k] for k in scales if k != ks]
+        loo = o[ks] - (np.mean(others) if others else o[ks])
+        loo_vals.append(loo)
 
-    y_train = labels[train_idx]
-    if task_type == 'multilabel':
-        prior = tag_prevalence(y_train)
+    payoffs = np.asarray(payoffs, dtype=float)
+    g_kstar = float(np.mean(g_kstar_vals))
+    g_base = float(np.mean(g_base_vals))
+    point_payoff = float(np.mean(payoffs))
+
+    ci = bootstrap_ci(payoffs, n_boot=n_boot, seed=seed)
+
+    # in-sample optimism: select k* directly on the outer (evaluation) gains
+    kstar_insample = [select_k_star(o) for o in outer]
+    payoff_insample = float(
+        np.mean([o[ks] - o[baseline] for o, ks in zip(outer, kstar_insample)])
+    )
+
+    # relative payoff (secondary): the fraction of the maximum discriminability,
+    # so it must live in [0, 1]. Under imperfect calibration G can dip below 0,
+    # which would push the raw ratio payoff/G(k*) above 1 (e.g. a negative
+    # baseline). We therefore report TSI_rel on G truncated at the 0 floor
+    # (G+ = max(G, 0)) in both numerator and denominator, and clip to [0, 1] for
+    # numerical safety. The absolute TSI (``payoff``) is left on RAW G, unchanged.
+    g_kstar_pos = float(np.mean([truncate_gain(o[ks]) for o, ks in zip(outer, kstar_inner)]))
+    g_base_pos = float(np.mean([truncate_gain(o[baseline]) for o in outer]))
+    if g_kstar_pos > 0:
+        tsi_rel = float(np.clip((g_kstar_pos - g_base_pos) / g_kstar_pos, 0.0, 1.0))
+        rel_per_fold = [
+            float(np.clip(
+                (truncate_gain(o[ks]) - truncate_gain(o[baseline])) / truncate_gain(o[ks]),
+                0.0, 1.0))
+            if truncate_gain(o[ks]) > 0 else np.nan
+            for o, ks in zip(outer, kstar_inner)
+        ]
+        rel_clean = np.asarray([r for r in rel_per_fold if np.isfinite(r)], dtype=float)
+        tsi_rel_ci = bootstrap_ci(rel_clean, n_boot=n_boot, seed=seed) if len(rel_clean) else (np.nan, np.nan)
     else:
-        prior = class_prior(y_train, n_classes)
+        tsi_rel = np.nan
+        tsi_rel_ci = (np.nan, np.nan)
 
-    tsi_scores = {}
-    info_gain_matrix = {}
-    optimal_scales = {}
+    # gain matrix cell stats (display-truncated to the [0,1] convention)
+    gain_matrix = {}
+    for k in scales:
+        vals = np.asarray([truncate_gain(o[k]) for o in outer], dtype=float)
+        gain_matrix[k] = {"mean": float(vals.mean()), "std": float(vals.std())}
 
-    for desc_name in FEATURE_DIMS.keys():
-        desc_gains = {}
+    # modal k* for a single reported optimal scale
+    vals, counts = np.unique(kstar_inner, return_counts=True)
+    k_star_modal = str(vals[int(np.argmax(counts))])
 
-        for scale_name in SCALES.keys():
-            X_desc = extract_descriptor_from_track_vector(
-                features[scale_name], desc_name
-            )
-            g, _ = _descriptor_info_gain(
-                X_desc, labels, train_idx, test_idx, n_classes,
-                classifier_name, task_type, prior, **clf_kwargs
-            )
-            desc_gains[scale_name] = g
-
-        info_gain_matrix[desc_name] = desc_gains
-        tsi_scores[desc_name] = float(np.std(list(desc_gains.values()), ddof=0))
-        optimal_scales[desc_name] = max(desc_gains, key=desc_gains.get)
-
-    return tsi_scores, info_gain_matrix, optimal_scales
-
-
-def _accumulate_cv_info_gain(
-    features: Dict[str, np.ndarray],
-    labels: np.ndarray,
-    n_classes: int,
-    folds: List[Tuple[np.ndarray, np.ndarray]],
-    classifier_name: str,
-    task_type: str,
-    **clf_kwargs,
-) -> Dict[str, Dict[str, List[float]]]:
-    """Collect per-fold information gain G(f, k) for every descriptor and scale.
-
-    The 21 (descriptor, scale) pairs within each fold are trained in parallel
-    using joblib threads. Thread-based parallelism works well here because
-    XGBoost/sklearn release the GIL for their C++ internals, and GPU classifiers
-    share the CUDA context across threads without extra setup cost.
-    n_jobs is capped at the number of descriptors (7) to avoid GPU memory pressure.
-    """
-    from joblib import Parallel, delayed
-
-    g_accum = {desc: {scale: [] for scale in SCALES.keys()}
-               for desc in FEATURE_DIMS.keys()}
-
-    pairs = [
-        (desc_name, scale_name)
-        for desc_name in FEATURE_DIMS.keys()
-        for scale_name in SCALES.keys()
-    ]
-
-    for train_idx, test_idx in folds:
-        y_train = labels[train_idx]
-        prior = (tag_prevalence(y_train) if task_type == 'multilabel'
-                 else class_prior(y_train, n_classes))
-
-        results = Parallel(n_jobs=len(FEATURE_DIMS), prefer='threads')(
-            delayed(_descriptor_info_gain)(
-                extract_descriptor_from_track_vector(features[scale_name], desc_name),
-                labels, train_idx, test_idx, n_classes,
-                classifier_name, task_type, prior, **clf_kwargs
-            )
-            for desc_name, scale_name in pairs
-        )
-
-        for (desc_name, scale_name), (g, _) in zip(pairs, results):
-            g_accum[desc_name][scale_name].append(g)
-
-    return g_accum
-
-
-def compute_tsi_cv(
-    features: Dict[str, np.ndarray],
-    labels: np.ndarray,
-    n_classes: int,
-    folds: List[Tuple[np.ndarray, np.ndarray]],
-    classifier_name: str = 'rf',
-    task_type: str = 'multiclass',
-    **clf_kwargs
-) -> Tuple[Dict[str, float], Dict[str, Dict[str, float]], Dict[str, str]]:
-    """
-    Compute the information-gain TSI with cross-validation (e.g. GTZAN).
-
-    Averages G(f, k) across folds before computing TSI. For per-descriptor
-    uncertainty (std, bootstrap CI) and best-vs-worst-scale significance, use
-    :func:`compute_tsi_cv_full`.
-
-    Returns
-    -------
-    Same shape as :func:`compute_tsi`:
-        (tsi_scores, info_gain_matrix, optimal_scales).
-    """
-    g_accum = _accumulate_cv_info_gain(
-        features, labels, n_classes, folds, classifier_name, task_type, **clf_kwargs
-    )
-
-    tsi_scores = {}
-    info_gain_matrix = {}
-    optimal_scales = {}
-
-    for desc_name in FEATURE_DIMS.keys():
-        desc_gains = {
-            scale: float(np.mean(g_accum[desc_name][scale]))
-            for scale in SCALES.keys()
-        }
-        info_gain_matrix[desc_name] = desc_gains
-        tsi_scores[desc_name] = float(np.std(list(desc_gains.values()), ddof=0))
-        optimal_scales[desc_name] = max(desc_gains, key=desc_gains.get)
-
-    return tsi_scores, info_gain_matrix, optimal_scales
-
-
-def compute_tsi_cv_full(
-    features: Dict[str, np.ndarray],
-    labels: np.ndarray,
-    n_classes: int,
-    folds: List[Tuple[np.ndarray, np.ndarray]],
-    classifier_name: str = 'rf',
-    task_type: str = 'multiclass',
-    n_bootstrap: int = 1000,
-    alpha: float = 0.05,
-    **clf_kwargs
-) -> Dict:
-    """
-    Cross-validated TSI with full statistics, ready to serialize for reporting.
-
-    For each descriptor it reports the mean TSI, its fold-level std, a bootstrap
-    confidence interval (resampling folds), the per-scale information gain
-    (mean +/- std), and whether the best vs. worst scale differ significantly
-    (paired Wilcoxon across folds). A descriptor only counts as genuinely
-    temporally sensitive when that test is significant.
-
-    Returns
-    -------
-    Dict with keys:
-        'tsi_scores', 'tsi_std', 'tsi_ci', 'info_gain_matrix', 'info_gain_std',
-        'optimal_scales', 'scale_significant', 'scale_p_value'.
-    """
-    from .stats import tsi_bootstrap_ci, tsi_scale_significance
-
-    g_accum = _accumulate_cv_info_gain(
-        features, labels, n_classes, folds, classifier_name, task_type, **clf_kwargs
-    )
-
-    result = {
-        'tsi_scores': {}, 'tsi_std': {}, 'tsi_ci': {},
-        'info_gain_matrix': {}, 'info_gain_std': {},
-        'optimal_scales': {}, 'scale_significant': {}, 'scale_p_value': {},
+    return {
+        "k_star": k_star_modal,
+        "k_star_per_fold": kstar_inner,
+        "G_kstar": g_kstar,
+        "G_baseline": g_base,
+        "payoff": point_payoff,
+        "payoff_per_fold": payoffs.tolist(),
+        "payoff_ci": ci,
+        "tsi_rel": tsi_rel,
+        "tsi_rel_ci": tsi_rel_ci,
+        "payoff_insample": payoff_insample,
+        "residual_optimism": payoff_insample - point_payoff,
+        "payoff_loo": float(np.mean(loo_vals)),
+        "gain_matrix": gain_matrix,
     }
 
-    for desc_name in FEATURE_DIMS.keys():
-        per_fold = {scale: np.asarray(g_accum[desc_name][scale])
-                    for scale in SCALES.keys()}
-        mean_gains = {scale: float(per_fold[scale].mean()) for scale in SCALES.keys()}
-        std_gains = {scale: float(per_fold[scale].std(ddof=1))
-                     if len(per_fold[scale]) > 1 else 0.0
-                     for scale in SCALES.keys()}
 
-        best = max(mean_gains, key=mean_gains.get)
-        worst = min(mean_gains, key=mean_gains.get)
+# --------------------------------------------------------------------------- #
+# Informativeness gate tau (per task)
+# --------------------------------------------------------------------------- #
+def gate_threshold(null_kstar_gains: Sequence[float], alpha: float = 0.05) -> float:
+    """tau = upper bound of the 95% CI of G(f,k*) under the permutation null.
 
-        ci = tsi_bootstrap_ci(per_fold, n_bootstrap=n_bootstrap)
-        sig = tsi_scale_significance(per_fold[best], per_fold[worst], alpha=alpha)
-
-        result['tsi_scores'][desc_name] = float(np.std(list(mean_gains.values()), ddof=0))
-        result['tsi_std'][desc_name] = ci['tsi_std']
-        result['tsi_ci'][desc_name] = [ci['ci_lower'], ci['ci_upper']]
-        result['info_gain_matrix'][desc_name] = mean_gains
-        result['info_gain_std'][desc_name] = std_gains
-        result['optimal_scales'][desc_name] = best
-        result['scale_significant'][desc_name] = sig['significant']
-        result['scale_p_value'][desc_name] = sig['p_value']
-
-    return result
-
-
-def tsi_consistency(
-    tsi_results: Dict[str, Dict[str, float]]
-) -> Dict[Tuple[str, str], float]:
+    The null sample must be generated by permuting labels and *re-selecting the
+    argmax within each replicate* (see :func:`permutation_null_kstar_gains`), so
+    that it embeds the same maximization bias as the point estimate.
     """
-    Compute Spearman correlation between TSI rankings across tasks/classifiers.
+    null = np.asarray(null_kstar_gains, dtype=float)
+    if len(null) == 0:
+        return 0.0
+    return float(np.percentile(null, 100 * (1 - alpha / 2)))
 
-    Parameters
-    ----------
-    tsi_results : Dict[str, Dict[str, float]]
-        Mapping config_name -> {descriptor_name -> TSI value}.
 
-    Returns
-    -------
-    Dict[Tuple[str, str], float]
-        Pairwise Spearman correlations between configurations.
+def apply_gate(stats: Dict, tau: float) -> Dict:
+    """Apply the informativeness gate and exploitability rule to one descriptor.
+
+    ``TSI = payoff * 1[G(f,k*) > tau]``; *temporally exploitable* iff the lower
+    bound of the payoff CI ``> 0`` AND ``G(f,k*) > tau``.
     """
-    from scipy.stats import spearmanr
+    gated = stats["G_kstar"] > tau
+    tsi = stats["payoff"] if gated else 0.0
+    ci_lo, _ = stats["payoff_ci"]
+    exploitable = bool(gated and ci_lo > 0)
+    out = dict(stats)
+    out.update(
+        {
+            "tau": float(tau),
+            "gate_pass": bool(gated),
+            "tsi": float(tsi),
+            "tsi_rel_reported": float(stats["tsi_rel"]) if gated and np.isfinite(stats["tsi_rel"]) else np.nan,
+            "exploitable": exploitable,
+        }
+    )
+    return out
 
-    configs = list(tsi_results.keys())
-    descriptors = list(FEATURE_DIMS.keys())
-    correlations = {}
 
-    for i in range(len(configs)):
-        for j in range(i + 1, len(configs)):
-            rank_i = [tsi_results[configs[i]][d] for d in descriptors]
-            rank_j = [tsi_results[configs[j]][d] for d in descriptors]
-            rho, pval = spearmanr(rank_i, rank_j)
-            correlations[(configs[i], configs[j])] = rho
+# --------------------------------------------------------------------------- #
+# Classifier-training driver: produce per-fold gain records on real features
+# --------------------------------------------------------------------------- #
+def _inner_splits(y: np.ndarray, train_idx: np.ndarray, n_inner: int,
+                  task_type: str, seed: int):
+    """Inner CV splits over the outer-train indices (Stratified for multiclass)."""
+    from sklearn.model_selection import StratifiedKFold, KFold
+    train_idx = np.asarray(train_idx)
+    if task_type == "multilabel":
+        splitter = KFold(n_splits=n_inner, shuffle=True, random_state=seed)
+        inner = list(splitter.split(train_idx))
+    else:
+        splitter = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
+        inner = list(splitter.split(train_idx, np.asarray(y)[train_idx]))
+    # map back to absolute indices
+    return [(train_idx[a], train_idx[b]) for a, b in inner]
 
-    return correlations
+
+def _fit_predict_gain(clf_factory, X, y, tr, ev, task_type, n_classes):
+    """Train one calibrated classifier on ``tr``, score ``G`` on ``ev``."""
+    clf = clf_factory(input_dim=X.shape[1], n_classes=n_classes, task_type=task_type)
+    clf.fit(X[tr], y[tr])
+    proba = clf.predict_proba(X[ev])
+    return gain_from_predictions(y[tr], y[ev], proba, task_type, n_classes=n_classes)
+
+
+def compute_fold_gains(
+    features: Dict[str, np.ndarray],
+    y: np.ndarray,
+    outer_folds: List,
+    clf_factory: Callable,
+    task_type: str,
+    n_classes: int,
+    descriptors: Optional[Sequence[str]] = None,
+    scales: Sequence[str] = tuple(SCALE_ORDER),
+    n_inner: int = 3,
+    seed: int = 42,
+) -> Dict[str, List[Dict[str, Dict[str, float]]]]:
+    """Train classifiers to produce nested per-fold gain records per descriptor.
+
+    For every descriptor and outer fold this computes, for each scale:
+      * ``inner`` gain = mean over inner folds of the outer-train set (selects k*),
+      * ``outer`` gain = G on the held-out outer fold (a single classifier per
+        scale trained on the full outer-train set).
+
+    Returns ``{descriptor: [ {'inner': {scale:G}, 'outer': {scale:G}}, ... ]}``
+    ready for :func:`tsi_from_fold_gains`.
+    """
+    descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
+    scales = [s for s in scales if s in features]
+    y = np.asarray(y)
+
+    # pre-slice each descriptor at each scale once
+    desc_X = {
+        f: {k: extract_descriptor(features[k], f) for k in scales}
+        for f in descriptors
+    }
+
+    fold_gains = {f: [] for f in descriptors}
+    for fold_i, (train_idx, eval_idx) in enumerate(outer_folds):
+        train_idx = np.asarray(train_idx)
+        eval_idx = np.asarray(eval_idx)
+        inner = _inner_splits(y, train_idx, n_inner, task_type, seed + fold_i)
+        for f in descriptors:
+            inner_g, outer_g = {}, {}
+            for k in scales:
+                X = desc_X[f][k]
+                # inner gains (nested k* selection)
+                ig = [
+                    _fit_predict_gain(clf_factory, X, y, itr, iev, task_type, n_classes)
+                    for itr, iev in inner
+                ]
+                inner_g[k] = float(np.mean(ig))
+                # outer gain on held-out fold
+                outer_g[k] = _fit_predict_gain(
+                    clf_factory, X, y, train_idx, eval_idx, task_type, n_classes
+                )
+            fold_gains[f].append({"inner": inner_g, "outer": outer_g})
+    return fold_gains
+
+
+def permutation_null_kstar_gains(
+    features: Dict[str, np.ndarray],
+    y: np.ndarray,
+    outer_folds: List,
+    clf_factory: Callable,
+    task_type: str,
+    n_classes: int,
+    descriptors: Optional[Sequence[str]] = None,
+    scales: Sequence[str] = tuple(SCALE_ORDER),
+    n_permutations: int = 100,
+    seed: int = 1234,
+) -> List[float]:
+    """Per-task null sample of G(f,k*) by permuting labels and re-selecting argmax.
+
+    For each replicate, labels are permuted, a single classifier per scale is
+    trained per outer fold, and ``G(f,k*)`` is taken with ``k* = argmax_k G`` over
+    the permuted-label gains -- so the null embeds the maximization bias. Gains are
+    pooled across descriptors and folds into one per-task distribution feeding
+    :func:`gate_threshold`. (Costly; the notebook scopes ``n_permutations``.)
+    """
+    descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
+    scales = [s for s in scales if s in features]
+    y = np.asarray(y)
+    rng = np.random.RandomState(seed)
+    desc_X = {
+        f: {k: extract_descriptor(features[k], f) for k in scales}
+        for f in descriptors
+    }
+    null_gains: List[float] = []
+    for r in range(n_permutations):
+        y_perm = y[rng.permutation(len(y))]
+        for (train_idx, eval_idx) in outer_folds:
+            train_idx = np.asarray(train_idx)
+            eval_idx = np.asarray(eval_idx)
+            for f in descriptors:
+                g = {}
+                for k in scales:
+                    X = desc_X[f][k]
+                    g[k] = _fit_predict_gain(
+                        clf_factory, X, y_perm, train_idx, eval_idx, task_type, n_classes
+                    )
+                ks = select_k_star(g)
+                null_gains.append(g[ks])
+    return null_gains
+
+
+# --------------------------------------------------------------------------- #
+# High-level orchestration for one dataset
+# --------------------------------------------------------------------------- #
+def compute_tsi_cv_full(
+    features: Dict[str, np.ndarray],
+    y: np.ndarray,
+    outer_folds: List,
+    clf_factory: Callable,
+    task_type: str,
+    n_classes: int,
+    descriptors: Optional[Sequence[str]] = None,
+    scales: Sequence[str] = tuple(SCALE_ORDER),
+    baseline: str = BASELINE,
+    n_inner: int = 3,
+    n_boot: int = 1000,
+    n_permutations: int = 100,
+    seed: int = 42,
+) -> Dict:
+    """Full per-dataset TSI: gain records -> stats -> per-task gate -> exploitability.
+
+    Returns a dict keyed by descriptor with the gated TSI statistics, plus a
+    top-level ``'tau'`` and ``'baseline'``. ``scales`` may be length 2 (IRMAS,
+    K=2) -- the same code path applies; the baseline must be among ``scales``.
+    """
+    descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
+    fold_gains = compute_fold_gains(
+        features, y, outer_folds, clf_factory, task_type, n_classes,
+        descriptors=descriptors, scales=scales, n_inner=n_inner, seed=seed,
+    )
+    null = permutation_null_kstar_gains(
+        features, y, outer_folds, clf_factory, task_type, n_classes,
+        descriptors=descriptors, scales=scales, n_permutations=n_permutations, seed=seed + 7,
+    )
+    tau = gate_threshold(null)
+
+    out = {"tau": tau, "baseline": baseline, "descriptors": {}}
+    for f in descriptors:
+        stats = tsi_from_fold_gains(
+            fold_gains[f], baseline=baseline, scales=scales, n_boot=n_boot, seed=seed,
+        )
+        out["descriptors"][f] = apply_gate(stats, tau)
+    return out
