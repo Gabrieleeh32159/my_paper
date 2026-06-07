@@ -192,6 +192,7 @@ def evaluate_fusion_cv(
     use_tsi_prior: bool = True,
     progress: bool = False,
     desc: Optional[str] = None,
+    checkpoint_path=None,
 ) -> Dict[str, List[float]]:
     """Per-fold primary-metric scores for each of the 5 strategies (+ references).
 
@@ -204,21 +205,34 @@ def evaluate_fusion_cv(
 
     Set ``progress=True`` for a tqdm bar over outer folds (each fold trains the 5
     strategies); ``desc`` labels it. Default is silent.
+
+    Pass ``checkpoint_path`` to make the sweep crash-safe: each fold's six scores
+    are saved as soon as the fold finishes and a re-run resumes from disk (each
+    fold seeds its inner splits with ``seed + fold_i``, so resumed folds match).
     """
     from .tsi import _inner_splits
     from .progress import progress_iter
+    from .checkpoint import load_progress, save_progress
     scales = [s for s in scales if s in features]
     y = np.asarray(y)
     tsi_by_descriptor = tsi_by_descriptor or {}
 
-    results = {k: [] for k in
-               ["single_scale", "early", "late_uniform", "tsi_guided",
-                "tsi_weighted_lf", "learned_lf"]}
+    strategy_names = ["single_scale", "early", "late_uniform", "tsi_guided",
+                      "tsi_weighted_lf", "learned_lf"]
 
     label = desc or "fusion"
     folds = list(enumerate(outer_folds))
+    # checkpoint store: {str(fold_i): {strategy: score}}
+    meta = {"kind": "evaluate_fusion_cv", "scales": scales, "n_inner": n_inner,
+            "seed": seed, "n_folds": len(folds), "use_tsi_prior": use_tsi_prior,
+            "n_classes": n_classes, "strategies": strategy_names}
+    store = load_progress(checkpoint_path, meta)
+
     for fold_i, (train_idx, eval_idx) in progress_iter(
             folds, progress, desc=f"{label} | fusion [folds]", total=len(folds)):
+        if str(fold_i) in store:
+            continue  # fold fully cached on a previous run
+        results = {k: [] for k in strategy_names}
         train_idx, eval_idx = np.asarray(train_idx), np.asarray(eval_idx)
         inner = _inner_splits(y, train_idx, n_inner, task_type, seed + fold_i)
 
@@ -280,4 +294,8 @@ def evaluate_fusion_cv(
         mix_ref = combine_late([eval_probas[k] for k in scales], w_ref)
         results["learned_lf"].append(primary_metric(y[eval_idx], mix_ref, task_type))
 
-    return results
+        store[str(fold_i)] = {k: float(results[k][0]) for k in strategy_names}
+        save_progress(checkpoint_path, meta, store)
+
+    # assemble {strategy: [score per fold]} in fold order (the public return shape)
+    return {k: [store[str(i)][k] for i in range(len(folds))] for k in strategy_names}

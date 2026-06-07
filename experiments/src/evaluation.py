@@ -305,6 +305,7 @@ def calibration_report(
     n_bins: int = 15,
     progress: bool = False,
     desc: Optional[str] = None,
+    checkpoint_path=None,
 ) -> Dict:
     """ECE averaged over outer folds + a pooled reliability curve for one classifier.
 
@@ -315,22 +316,40 @@ def calibration_report(
 
     Set ``progress=True`` for a tqdm bar over outer folds; ``desc`` labels it.
     Default is silent.
+
+    Pass ``checkpoint_path`` to persist each fold's ECE and held-out predictions as
+    it finishes; a re-run resumes from disk and the pooled reliability curve is
+    rebuilt from the cached predictions.
     """
     from .progress import progress_iter
+    from .checkpoint import load_progress, save_progress
     y = np.asarray(y)
     label = desc or "calibration"
-    eces, pooled_proba, pooled_y = [], [], []
     folds = list(outer_folds)
-    for train_idx, eval_idx in progress_iter(
-            folds, progress, desc=f"{label} | calib [folds]", total=len(folds)):
+    # checkpoint store: {str(fold_i): {"ece": float, "proba": [[...]], "y": [...]}}
+    meta = {"kind": "calibration_report", "scale": scale, "n_bins": n_bins,
+            "n_folds": len(folds), "task_type": task_type, "n_classes": n_classes}
+    store = load_progress(checkpoint_path, meta)
+
+    for fold_i, (train_idx, eval_idx) in progress_iter(
+            list(enumerate(folds)), progress, desc=f"{label} | calib [folds]",
+            total=len(folds)):
+        if str(fold_i) in store:
+            continue  # fold cached on a previous run
         train_idx, eval_idx = np.asarray(train_idx), np.asarray(eval_idx)
         clf = clf_factory(input_dim=features[scale].shape[1],
                           n_classes=n_classes, task_type=task_type)
         clf.fit(features[scale][train_idx], y[train_idx])
-        proba = clf.predict_proba(features[scale][eval_idx])
-        eces.append(expected_calibration_error(y[eval_idx], proba, task_type, n_bins))
-        pooled_proba.append(np.asarray(proba))
-        pooled_y.append(y[eval_idx])
+        proba = np.asarray(clf.predict_proba(features[scale][eval_idx]))
+        ece = expected_calibration_error(y[eval_idx], proba, task_type, n_bins)
+        store[str(fold_i)] = {"ece": float(ece),
+                              "proba": proba.tolist(),
+                              "y": np.asarray(y[eval_idx]).tolist()}
+        save_progress(checkpoint_path, meta, store)
+
+    eces = [store[str(i)]["ece"] for i in range(len(folds))]
+    pooled_proba = [np.asarray(store[str(i)]["proba"]) for i in range(len(folds))]
+    pooled_y = [np.asarray(store[str(i)]["y"]) for i in range(len(folds))]
     proba_all = np.concatenate(pooled_proba, axis=0)
     y_all = np.concatenate(pooled_y, axis=0)
     rc = reliability_curve(y_all, proba_all, task_type, n_bins)

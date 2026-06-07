@@ -38,6 +38,7 @@ from typing import Dict, List, Optional, Callable, Sequence
 from .features import FEATURE_DIMS, extract_descriptor
 from .evaluation import gain_from_predictions, truncate_gain
 from .progress import progress_iter
+from .checkpoint import load_progress, save_progress
 
 SCALE_ORDER = ["short", "medium", "long"]
 BASELINE = "medium"          # k_bar: the 2 s convention the TSI questions
@@ -286,6 +287,7 @@ def compute_fold_gains(
     seed: int = 42,
     progress: bool = False,
     desc: Optional[str] = None,
+    checkpoint_path=None,
 ) -> Dict[str, List[Dict[str, Dict[str, float]]]]:
     """Train classifiers to produce nested per-fold gain records per descriptor.
 
@@ -299,6 +301,11 @@ def compute_fold_gains(
 
     Set ``progress=True`` for nested tqdm bars (outer over folds, inner over
     descriptors); ``desc`` labels them (e.g. the dataset name). Default is silent.
+
+    Pass ``checkpoint_path`` (a file on persistent storage, e.g. Drive) to make the
+    sweep crash-safe: progress is saved after every ``(fold, descriptor)`` and a
+    re-run resumes from disk, skipping completed units (each fold seeds its inner
+    splits with ``seed + fold_i``, so resumed folds are bit-identical).
     """
     descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
     scales = [s for s in scales if s in features]
@@ -311,16 +318,26 @@ def compute_fold_gains(
     }
 
     label = desc or "gains"
-    fold_gains = {f: [] for f in descriptors}
     folds = list(enumerate(outer_folds))
+    # checkpoint store: {str(fold_i): {descriptor: {"inner":..., "outer":...}}}
+    meta = {"kind": "compute_fold_gains", "descriptors": descriptors, "scales": scales,
+            "n_inner": n_inner, "seed": seed, "n_folds": len(folds),
+            "task_type": task_type, "n_classes": n_classes}
+    store = load_progress(checkpoint_path, meta)
+
     for fold_i, (train_idx, eval_idx) in progress_iter(
             folds, progress, desc=f"{label} | gains [folds]", total=len(folds)):
+        fold_done = store.setdefault(str(fold_i), {})
+        if all(f in fold_done for f in descriptors):
+            continue  # fold fully cached -> skip (no inner-split work needed)
         train_idx = np.asarray(train_idx)
         eval_idx = np.asarray(eval_idx)
         inner = _inner_splits(y, train_idx, n_inner, task_type, seed + fold_i)
         for f in progress_iter(descriptors, progress,
                                desc=f"  fold {fold_i + 1}/{len(folds)} [desc]",
                                leave=False):
+            if f in fold_done:
+                continue  # already computed on a previous run
             inner_g, outer_g = {}, {}
             for k in scales:
                 X = desc_X[f][k]
@@ -334,8 +351,11 @@ def compute_fold_gains(
                 outer_g[k] = _fit_predict_gain(
                     clf_factory, X, y, train_idx, eval_idx, task_type, n_classes
                 )
-            fold_gains[f].append({"inner": inner_g, "outer": outer_g})
-    return fold_gains
+            fold_done[f] = {"inner": inner_g, "outer": outer_g}
+            save_progress(checkpoint_path, meta, store)
+
+    # assemble the public return shape in fold order, preserving descriptor order
+    return {f: [store[str(i)][f] for i in range(len(folds))] for f in descriptors}
 
 
 def permutation_null_kstar_gains(
@@ -351,6 +371,7 @@ def permutation_null_kstar_gains(
     seed: int = 1234,
     progress: bool = False,
     desc: Optional[str] = None,
+    checkpoint_path=None,
 ) -> List[float]:
     """Per-task null sample of G(f,k*) by permuting labels and re-selecting argmax.
 
@@ -362,23 +383,41 @@ def permutation_null_kstar_gains(
 
     Set ``progress=True`` for a tqdm bar over permutation replicates (the slowest,
     most opaque phase); ``desc`` labels it. Default is silent.
+
+    Pass ``checkpoint_path`` to make this (the dominant cost) crash-safe: progress
+    is saved after every ``(permutation, fold)`` and a re-run resumes from disk.
+    Each replicate is seeded independently (``RandomState(seed + r)``) so a resumed
+    replicate reproduces exactly regardless of how many ran before the crash.
     """
     descriptors = list(descriptors) if descriptors is not None else list(FEATURE_DIMS.keys())
     scales = [s for s in scales if s in features]
     y = np.asarray(y)
-    rng = np.random.RandomState(seed)
+    folds = list(outer_folds)
     desc_X = {
         f: {k: extract_descriptor(features[k], f) for k in scales}
         for f in descriptors
     }
     label = desc or "gate"
-    null_gains: List[float] = []
+    # checkpoint store: {str(r): {str(fold_i): [G(f,k*) per descriptor, in order]}}
+    meta = {"kind": "permutation_null_kstar_gains", "descriptors": descriptors,
+            "scales": scales, "n_permutations": n_permutations, "seed": seed,
+            "n_folds": len(folds), "task_type": task_type, "n_classes": n_classes}
+    store = load_progress(checkpoint_path, meta)
+
     for r in progress_iter(range(n_permutations), progress,
                            desc=f"{label} | gate τ [perm]", total=n_permutations):
+        perm_done = store.setdefault(str(r), {})
+        if all(str(fi) in perm_done for fi in range(len(folds))):
+            continue  # replicate fully cached -> skip (no permutation/fit work)
+        # per-replicate seed: a resumed replicate is bit-identical to a fresh run
+        rng = np.random.RandomState(seed + r)
         y_perm = y[rng.permutation(len(y))]
-        for (train_idx, eval_idx) in outer_folds:
+        for fold_i, (train_idx, eval_idx) in enumerate(folds):
+            if str(fold_i) in perm_done:
+                continue
             train_idx = np.asarray(train_idx)
             eval_idx = np.asarray(eval_idx)
+            fold_gains = []
             for f in descriptors:
                 g = {}
                 for k in scales:
@@ -387,7 +426,15 @@ def permutation_null_kstar_gains(
                         clf_factory, X, y_perm, train_idx, eval_idx, task_type, n_classes
                     )
                 ks = select_k_star(g)
-                null_gains.append(g[ks])
+                fold_gains.append(g[ks])
+            perm_done[str(fold_i)] = fold_gains
+            save_progress(checkpoint_path, meta, store)
+
+    # flatten in (permutation, fold, descriptor) order -> the public return shape
+    null_gains: List[float] = []
+    for r in range(n_permutations):
+        for fold_i in range(len(folds)):
+            null_gains.extend(store[str(r)][str(fold_i)])
     return null_gains
 
 
