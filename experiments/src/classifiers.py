@@ -160,19 +160,27 @@ class XGBoostClassifier:
     def __init__(self, n_estimators: int = 500, max_depth: int = 6,
                  learning_rate: float = 0.1, random_state: int = 42,
                  calibrate: bool = True, calibration_method: str = 'sigmoid',
-                 calibration_cv: int = 3):
+                 calibration_cv: int = 3, device: Optional[str] = None):
         from xgboost import XGBClassifier as _XGBClassifier
-        try:
-            import torch as _torch
-            _device = 'cuda' if _torch.cuda.is_available() else 'cpu'
-        except ImportError:
-            _device = 'cpu'
+        # ``device=None`` -> auto-detect (GPU if torch sees one). Pass ``'cpu'``
+        # explicitly to force the CPU ``hist`` method: for the tiny per-descriptor
+        # fits in the TSI sweep the GPU's per-round kernel-launch overhead usually
+        # makes CPU far faster. ``device`` is NOT part of any checkpoint signature,
+        # so switching it never invalidates cached gain records.
+        if device is None:
+            try:
+                import torch as _torch
+                device = 'cuda' if _torch.cuda.is_available() else 'cpu'
+            except ImportError:
+                device = 'cpu'
+        _device = device
         self.base = _XGBClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
             random_state=random_state,
             n_jobs=-1 if _device == 'cpu' else 1,
+            tree_method='hist',
             device=_device,
             eval_metric='mlogloss',
             use_label_encoder=False,
