@@ -25,7 +25,7 @@
 Lima, Per\'u \\
 gabriel.espinoza.h@utec.edu.pe}
 \and
-\IEEEauthorblockN{Ricardo}
+\IEEEauthorblockN{Angel Napa}
 \IEEEauthorblockA{\textit{Facultad de Computaci\'on} \\
 \textit{UTEC}\\
 Lima, Per\'u \\
@@ -52,11 +52,6 @@ Lima, Per\'u \\
 % Esto posiciona el paper como proveedor de conocimiento diagnóstico que el deep learning no puede proveer, un nicho defensible y genuinamente útil.}
 
 % ============================================================
-% REVISAR: Abstract reescrito. Cambios: (1) el TSI se redefine como "payoff" de la
-% escala optima (ganancia adicional sobre la convencion de 2 s), no como dispersion;
-% (2) se distinguen las dos estrategias guiadas por TSI (seleccion de escala vs late
-% fusion ponderada); (3) los claims de resultados ("demuestran que...") se suavizan a
-% objetivos/hipotesis (es un proposal). Implica re-ejecutar con 5 estrategias de fusion.
 \begin{abstract}
 Las \textit{audio features} artesanales como MFCCs, \textit{chroma} y descriptores espectrales siguen siendo ampliamente utilizadas en pipelines de \textit{Music Information Retrieval} (MIR), especialmente en contextos con recursos computacionales limitados donde el \textit{deep learning} no es viable. Sin embargo, la ventana temporal sobre la cual se agregan estas \textit{features} se elige típicamente por convención ---usualmente 1--2\,s o la duración completa del clip--- sin justificación acústica ni evidencia empírica comparativa. Este trabajo propone el \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica basada en ganancia de información normalizada que cuantifica \emph{cuánta incertidumbre de etiqueta adicional resuelve un descriptor al extraerse en su escala temporal óptima en lugar de la escala de convención}. A diferencia de un mero estadístico de dispersión, el TSI es un \emph{payoff} accionable, expresado en la unidad de la ganancia de información, que el practicante puede usar para decidir qué descriptores conviene re-escalar. Extraemos siete descriptores canónicos a tres resoluciones temporales ---corta ($\sim$200\,ms), media ($\sim$2\,s) y larga ($\sim$5\,s), justificadas por principios psicoacústicos--- y evaluamos cinco estrategias de fusión: \textit{single-scale}, \textit{early fusion}, \textit{late fusion}, \textit{TSI-guided scale selection} (concatenación de cada descriptor en su escala óptima) y \textit{TSI-weighted late fusion} (combinación de decisiones ponderada por el TSI). La evaluación abarca tres tareas: clasificación de género (GTZAN, FMA-small), \textit{auto-tagging} (MagnaTagATune) y reconocimiento de instrumentos (IRMAS). El TSI organiza una matriz de ganancia descriptor~$\times$~escala (7$\times$3) que sirve como referencia interpretable para practicantes de MIR y motiva la \textit{TSI-guided scale selection} (cada descriptor en su escala óptima). Nuestras hipótesis ---a verificar empíricamente--- son que MFCCs y ZCR exhibirán alto TSI (su escala óptima difiere marcadamente de la convención de 2\,s) mientras que \textit{chroma} y \textit{tonnetz} exhibirán TSI bajo (la convención ya es casi óptima para ellos), que las estrategias guiadas por TSI igualarán o superarán a la concatenación ingenua, y que el \emph{ranking} de descriptores por TSI se mantendrá consistente entre \textit{datasets} y clasificadores, ofreciendo guías prácticas para el diseño de pipelines de MIR interpretables.
 \end{abstract}
@@ -87,9 +82,6 @@ Existe además una brecha práctica importante: las aplicaciones de MIR en entor
 embebidos, plataformas móviles, herramientas educativas--- siguen dependiendo de \textit{features} artesanales y clasificadores clásicos 
 \cite{ding2023audio, tamm2024comparative}. Para estos casos, no existe guía empírica sobre qué escala temporal usar para cada tipo de descriptor, ni cómo combinarlas eficientemente.
 
-% REVISAR: Reescrito para alinear el rol del TSI con el mecanismo real. El TSI deja de
-% "construir la fusion" en abstracto: ahora (i) cuantifica el payoff de la escala optima
-% por descriptor y (ii) determina los pesos de una late fusion ponderada.
 Este trabajo aborda esta brecha proponiendo el \textbf{Índice de Sensibilidad Temporal (TSI)}, una métrica que cuantifica, para cada descriptor de audio, \emph{cuánta incertidumbre de etiqueta adicional se resuelve al extraerlo en su escala temporal óptima en lugar de la escala de convención}. El TSI no es un estadístico descriptivo de dispersión, sino un \emph{payoff} en la unidad de la ganancia de información, directamente conectado a la decisión que el pipeline toma ($k^*(f)=\arg\max_k G(f,k)$). Sobre esta métrica construimos dos estrategias: \textit{TSI-guided scale selection}, que concatena cada descriptor en su escala óptima para obtener una representación interpretable, y \textit{TSI-weighted late fusion}, que combina las decisiones de los clasificadores por escala con pesos derivados del TSI. A diferencia de trabajos previos basados en \textit{deep learning}, nuestro enfoque es interpretable: cada decisión de diseño se traza hasta una propiedad medible del descriptor.
 
 La pregunta central que guía este trabajo es: 
@@ -133,7 +125,7 @@ Ninguno de estos trabajos proporciona una métrica cuantitativa que capture cuá
 
 \subsection{Representaciones \textit{Multi-Scale} en Música}
 La importancia de modelar la música a múltiples niveles temporales ha sido reconocida en análisis de estructura \cite{serra2014unsupervised} y, más recientemente, en \textit{deep learning}.
-Buisson et al.\ \cite{buisson2024self} aprenden \textit{embeddings} continuos multinivel mediante objetivos contrastivos y demuestran mejoras en segmentación estructural; sin embargo, la contribución 
+Buisson et al.\ \cite{buisson2024self} aprenden \textit{embeddings} continuos multinivel mediante objetivos contrastivos y demuestran mejoras en segmentación estructural; sin embargo, la contribución
 específica de cada escala temporal no puede aislarse de la capacidad representacional del modelo contrastivo.
 OMAR-RQ \cite{alonso2025omar} utiliza \textit{masked token prediction} con \textit{vector quantization} a una sola escala temporal, logrando resultados sólidos en diversas tareas pero sin un diseño \textit{multi-scale} explícito, lo que limita su capacidad para capturar fenómenos musicales que operan en horizontes temporales distintos.
 SemiSupCon \cite{guinot2024semi} mejora la geometría del \textit{embedding} mediante aprendizaje contrastivo semi-supervisado, pero colapsa la información temporal en una representación global, perdiendo la estructura temporal que diferencia, por ejemplo, patrones tímbricos 
@@ -150,9 +142,7 @@ diferentes tareas \textit{downstream}, sugiriendo indirectamente que ninguna vis
 puede atribuirse específicamente a la escala temporal de extracción.
 Ding y Lerch \cite{ding2023audio} mostraron que incluso modelos simples tipo \textit{student} pueden igualar \textit{embeddings} del modelo \textit{teacher} cuando la transferencia se hace cuidadosamente, apoyando la idea de que la ingeniería de \textit{features}---incluyendo el diseño 
 temporal---sigue siendo relevante en escenarios donde el \textit{deep learning} no es viable por restricciones computacionales.
-% REVISAR: Actualizado al nombre y mecanismo unificados. Ahora el TSI (i) selecciona
-% escala por descriptor y (ii) pondera la late fusion, cerrando el ciclo diagnostico->
-% mecanismo y eliminando la disonancia del nombre "TSI-weighted".
+
 Ninguno de los trabajos anteriores propone una estrategia de fusión explícitamente informada por la sensibilidad temporal medida de cada descriptor. Las dos estrategias guiadas por TSI que introducimos llenan este vacío: en lugar de concatenar todas las escalas con igual peso (\textit{early fusion}) o promediar decisiones independientes con peso fijo $1/3$ (\textit{late fusion}), la \textit{TSI-guided scale selection} asigna a cada descriptor su escala óptima $k^*(f)$ ---es decir, la representación está gobernada por el mismo análisis de ganancia que define el TSI---, y la \textit{TSI-weighted late fusion} explora el TSI como \emph{prior} para inicializar los pesos de decisión, que luego se aprenden. Así, el análisis de ganancia que subyace al TSI pasa de ser descriptivo a motivar y parametrizar la representación de la fusión, cerrando parcialmente el ciclo entre diagnóstico y diseño de pipeline; los pesos de decisión, en cambio, se aprenden y el TSI interviene solo como prior, lo que reportamos con honestidad.
 
 \subsection{Posicionamiento de esta Propuesta}
@@ -163,9 +153,7 @@ La Tabla~\ref{tab:positioning} resume cómo este trabajo se  diferencia de los m
 \centering
 \caption{Posicionamiento respecto a trabajos relacionados.}
 \label{tab:positioning}
-% REVISAR: La columna "Metrica TSI" era auto-cumplida (solo este trabajo la tiene por
-% definicion). Se reemplaza por "Metrica de escala" (criterio neutral: si el trabajo
-% aporta UNA metrica cuantitativa de sensibilidad a la escala). No requiere re-ejecutar.
+
 \begin{tabular}{@{}lcccc@{}}
 \toprule
 \textbf{Trabajo} & \textbf{Multi-escala} & \textbf{Interpretable} &
@@ -210,19 +198,19 @@ escalas contribuyen igualmente. Con ello buscamos un pipeline que sea interpreta
 
 % ============================================================
 \section{Metodología}
-El pipeline experimental consta de cinco etapas (Fig.~\ref{fig:pipeline}): (1)~preprocesamiento de audio, (2)~extracción de \textit{features} a múltiples escalas,
+El pipeline experimental consta de cinco etapas: (1)~preprocesamiento de audio, (2)~extracción de \textit{features} a múltiples escalas,
 (3)~agregación y fusión de \textit{features}, (4)~clasificación bajo cada estrategia de fusión, y
 (5)~cómputo del TSI, análisis de importancia y validación estadística.
 Todo el código está implementado en Python usando \texttt{librosa} \cite{mcfee2015librosa} para la extracción de \textit{features}, \texttt{scikit-learn} para los clasificadores clásicos, y \texttt{PyTorch} para el \textit{baseline} MLP.
-Este artículo es una \emph{propuesta}: especifica la métrica, el método de fusión y el protocolo experimental completo (\textit{datasets}, particiones, clasificadores, métricas y validación estadística), de modo que el estudio sea directamente ejecutable y pre-registrable; la ejecución empírica y sus resultados se reportarán en un trabajo posterior. Los experimentos se ejecutarán en Google Colab Pro, y todo el código y las \textit{features} extraídas se publicarán para garantizar la reproducibilidad.
+% Este artículo es una \emph{propuesta}: especifica la métrica, el método de fusión y el protocolo experimental completo (\textit{datasets}, particiones, clasificadores, métricas y validación estadística), de modo que el estudio sea directamente ejecutable y pre-registrable; la ejecución empírica y sus resultados se reportarán en un trabajo posterior. Los experimentos se ejecutarán en Google Colab Pro, y todo el código y las \textit{features} extraídas se publicarán para garantizar la reproducibilidad.
 
 
-\begin{figure}
-    \centering
-    \includegraphics[width=0.95\linewidth]{methodology2.png}
-    \caption{Pipeline completo de extracción, fusión y evaluación de \textit{features} multi-scale. Las tres ramas de color representan las escalas temporal corta (naranja), media (verde) y larga (morado). Las estrategias guiadas por TSI ---\textit{TSI-guided scale selection} y \textit{TSI-weighted late fusion}--- son las propuestas novedosas de este trabajo.}
-    \label{fig:pipeline}
-\end{figure}
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=0.95\linewidth]{methodology2.png}
+%     \caption{Pipeline completo de extracción, fusión y evaluación de \textit{features} multi-scale. Las tres ramas de color representan las escalas temporal corta (naranja), media (verde) y larga (morado). Las estrategias guiadas por TSI ---\textit{TSI-guided scale selection} y \textit{TSI-weighted late fusion}--- son las propuestas novedosas de este trabajo.}
+%     \label{fig:pipeline}
+% \end{figure}
 
 
 \subsection{Datasets}
@@ -322,10 +310,6 @@ La media captura el valor central de cada descriptor durante la ventana, mientra
 centroid}, cuya dinámica temporal es musicalmente significativa.
 La representación a nivel de pista en la escala $k \in \{s, m, l\}$ se obtiene calculando la media y desviación estándar de los vectores a nivel de ventana a través de todas las ventanas de esa escala, produciendo $\mathbf{x}_k \in \mathbb{R}^{192}$. Son, por tanto, \emph{dos} etapas de media+desviación (dentro de cada ventana y entre ventanas), es decir un factor $\times 4$ sobre las $48$ dimensiones a nivel de \textit{frame} ($48\times4=192$); a nivel de pista cada descriptor aporta $4\times$ su dimensión de \textit{frame} (p. ej.\ MFCC $20\to80$, ZCR $1\to4$).
 
-% REVISAR: Se anaden CINCO representaciones (antes cuatro) y se renombran al esquema
-% unificado. La novedad es la TSI-weighted late fusion con pesos w_k derivados del TSI,
-% que devuelve al TSI un rol mecanico. Implica implementar w_k en fusion.py y re-ejecutar
-% la comparacion de fusion con 5 estrategias (el autor corre el codigo aparte).
 Las representaciones comparadas, agrupadas en cinco estrategias (el \textit{single-scale} reúne las tres variantes corta/media/larga), son:
 \begin{align}
     \text{Solo corta:}  \quad & \mathbf{x}_s \in \mathbb{R}^{192} \\
@@ -348,11 +332,7 @@ Las representaciones comparadas, agrupadas en cinco estrategias (el \textit{sing
 
 donde $k^*(f)$ es la escala óptima del descriptor $f$ ---seleccionada por \emph{selección anidada} en \textit{folds} internos de entrenamiento, idéntico protocolo que el del TSI (Sec.~\ref{subsec:tsi}), para evitar fuga de información hacia la representación---, $\mathbf{x}^{(f)}_{k}$ es el sub-vector del descriptor $f$ extraído a la escala $k$, y $\hat{p}_k$ es la probabilidad predicha por el clasificador entrenado en la escala $k$.
 
-% REVISAR: M3 del revisor. Los pesos de la late fusion ya NO se derivan del TSI univariado
-% (que mide payoff por descriptor aislado y no la calidad de la decision p_k, que es
-% multivariada). Ahora se aprenden a nivel de decision en folds internos; el TSI se usa
-% solo como PRIOR opcional, declarado heuristico, y se compara contra los pesos aprendidos
-% como referencia (limite superior). Implica re-ejecutar la fusion con esta especificacion.
+
 Los pesos $w_k$ de la \textit{TSI-weighted late fusion} se aprenden a nivel de \emph{decisión} en \textit{folds} internos de entrenamiento, maximizando la ganancia de información de la combinación mediante una regresión logística no negativa sobre las probabilidades $\hat{p}_k$ con $w_k\geq 0$ y $\sum_k w_k = 1$. Aprendemos los pesos ---en lugar de derivarlos del TSI--- porque el TSI cuantifica el \emph{payoff univariado} de cada descriptor, mientras que $\hat{p}_k$ resume todos los descriptores conjuntamente; usar el TSI agregado por escala como peso de decisión sería una heurística que confunde discriminabilidad univariada con calidad de decisión multivariada. El TSI interviene como \emph{prior} opcional ---inicializando $w_k \propto \epsilon + \sum_{f:\,k^*(f)=k}\mathrm{TSI}(f)$, con $\epsilon=10^{-3}$---, y reportamos por separado en qué medida ese prior se aproxima a los pesos aprendidos, lo que valida (o refuta) el vínculo diagnóstico sin imponerlo. En el caso degenerado en que todos los descriptores informativos comparten una misma $k^*$ (la compuerta anula el resto), el prior concentra la masa en esa escala y asigna $\approx\epsilon$ a las demás; como los pesos finales se \emph{aprenden} y el prior es solo inicialización, el resultado no depende de esa degeneración, que únicamente afecta el punto de partida de la optimización. Como referencia de \emph{límite superior} comparamos contra una \textit{late fusion} con pesos puramente aprendidos sin prior, y como \emph{límite inferior} contra la \textit{late fusion} uniforme ($w_k=1/3$).
 
 La \textit{TSI-guided scale selection}, en cambio, sí es íntegramente gobernada por el TSI: opera por \emph{selección} de escala con peso unitario ---evitando que la estandarización \mbox{z-score} cancele factores constantes y que los clasificadores basados en árboles, invariantes al escalado monótono, ignoren cualquier peso a nivel de \textit{feature}---, por lo que cualquier ponderación explícita tiene efecto únicamente a nivel de decisión.
@@ -362,12 +342,8 @@ Todas las \textit{features} se estandarizan (media cero, varianza unitaria) usan
 \subsection{Índice de Sensibilidad Temporal (TSI)}
 \label{subsec:tsi}
 
-% REVISAR: Nucleo del rediseno. (1) Se reformula coherente con el nuevo rol del TSI.
-% (2) G y L_chance se conservan IDENTICAS. (3) El TSI se redefine como payoff
-% G(f,k*)-G(f,k_conv) con compuerta de informatividad y variante relativa. (4) std_k G
-% se conserva renombrado TSD como estadistico secundario. Implica (en codigo, aparte):
-% compuerta tau via IC bootstrap de G(f,k*) y la variante TSI_rel.
-El TSI articula el análisis diagnóstico de este trabajo y, a la vez, determina las estrategias de fusión guiadas por él. Para cada descriptor $f \in \{\text{MFCCs, Chroma, SC, SCon, SR, ZCR, Tonnetz}\}$ y escala $k \in \{s, m, l\}$, definimos primero la \textbf{ganancia de información normalizada}:
+
+El TSI articula el análisis diagnóstico de este trabajo y, a la vez, determina las estrategias de fusión guiadas por él. Para cada descriptor $f \in \{\text{MFCCs, Chroma, SC, SCon, SR, ZCR, Tonnetz}\}$ y escala $k \in \{s, m, l\}$, definimos primero la \textbf{ganancia de información normalizada}: \textcolor{red}{colocar cite}
 
 \begin{equation}
     G(f, k) = 1 - \frac{L(f, k)}{L_{\text{chance}}}
@@ -384,11 +360,11 @@ El TSI articula el análisis diagnóstico de este trabajo y, a la vez, determina
     \label{eq:lchance}
 \end{equation}
 
-\noindent donde $p_c$ es la proporción de la clase $c$ en el entrenamiento (cuando las clases son uniformes, $p_c=1/C$, el término se reduce a $\log C$), y $H(\pi_t) = -\pi_t \log \pi_t - (1-\pi_t)\log(1-\pi_t)$ es la entropía binaria de la prevalencia $\pi_t$ del \textit{tag} $t$. \textcolor{red}{Las expresiones anteriores son la forma cerrada de referencia (la entropía del \textit{base rate} de entrenamiento); operativamente, $L_{\text{chance}}$ se computa como la \textit{log-loss} de ese predictor constante \emph{medida sobre el mismo \textit{fold} de evaluación} que $L(f,k)$ ---igual a la forma cerrada en expectativa, difiriendo solo por el muestreo finito del \textit{fold}.}
+\noindent donde $p_c$ es la proporción de la clase $c$ en el entrenamiento (cuando las clases son uniformes, $p_c=1/C$, el término se reduce a $\log C$), y $H(\pi_t) = -\pi_t \log \pi_t - (1-\pi_t)\log(1-\pi_t)$ es la entropía binaria de la prevalencia $\pi_t$ del \textit{tag} $t$.
 
 $G(f,k)$ mide qué fracción de la incertidumbre de etiqueta resuelve el descriptor $f$ a la escala $k$: vale $0$ cuando el clasificador iguala al \textit{base rate} y tiende a $1$ bajo calibración perfecta. Una calibración imperfecta puede producir $L(f,k) > L_{\text{chance}}$ y por tanto $G < 0$; en rigor $G \in (-\infty, 1]$, y el piso $0$ es una convención de interpretación (``sin información útil''), no una propiedad garantizada. La \textbf{escala óptima} del descriptor, $k^*(f) = \arg\max_k G(f,k)$, se estima por \emph{selección anidada}: se elige en \textit{folds} internos de entrenamiento y se evalúa en los \textit{folds} externos, de modo que $G(f,k^*)$ no incurra en el sesgo optimista (\textit{winner's curse}) de seleccionar el máximo sobre los mismos datos con que se reporta su valor. Esta misma definición de $k^*$ se usa de forma idéntica en el TSI, su intervalo de confianza, la compuerta y las estrategias de fusión.
 
-% REVISAR: redefinicion central del TSI.
+
 El \textbf{Índice de Sensibilidad Temporal} se define como la \emph{ganancia de información adicional que el descriptor obtiene al extraerse en su escala óptima en lugar de la escala de convención} $\bar{k}=m$ (2\,s), valor por defecto en la práctica de MIR \cite{peeters2004large}:
 \begin{equation}
     \mathrm{TSI}(f) = \bigl[\,G(f,k^*) - G(f,\bar{k})\,\bigr]\cdot
@@ -398,14 +374,10 @@ El \textbf{Índice de Sensibilidad Temporal} se define como la \emph{ganancia de
 
 El TSI se interpreta directamente en la unidad de $G$: es la fracción de incertidumbre de etiqueta que se resuelve \emph{de más} al re-escalar $f$ a su escala óptima respecto a usar la convención. Por construcción $\mathrm{TSI}(f)\geq 0$, con $\mathrm{TSI}(f)=0$ cuando la escala de convención ya es la óptima ---es decir, re-escalar ese descriptor no aporta nada y el practicante puede dejarlo en 2\,s. A mayor TSI, mayor el costo de oportunidad de adherirse a la convención. El factor indicador $\mathbf{1}[\,G(f,k^*)>\tau\,]$ es una \textbf{compuerta de informatividad} que evita el \emph{efecto piso}: un descriptor cuya ganancia óptima no supera significativamente el azar recibe $\mathrm{TSI}=0$ por ser poco informativo en \emph{cualquier} escala, y su valor no se interpreta como robustez temporal. El umbral $\tau$ y el intervalo de confianza de $G(f,k^*)$ se construyen con \emph{el mismo} procedimiento anidado y de permutación que define $k^*$ (Sec.~\ref{subsec:tsi}, validación), de modo que la distribución nula incorpora el paso de maximización y no subestima el sesgo de selección. El umbral $\tau$ se calibra \emph{por tarea}, ya que el techo efectivo de $G$ difiere entre una tarea multiclase y una multietiqueta.
 
-% REVISAR: m3 del revisor. La baseline k_conv=2 s es ella misma una convencion no validada,
-% lo que introduciria circularidad. Se reporta la sensibilidad del TSI a la eleccion de
-% baseline (media y peor escala) como analisis de robustez. Implica reportar esas variantes.
+
 Dado que la convención de 2\,s es a su vez una elección heredada, fijamos $\bar k=m$ como baseline \emph{canónica} ---por corresponder a la práctica real que el TSI busca cuestionar--- y reportamos como único análisis de robustez el TSI calculado contra la \emph{media \mbox{leave-one-out}} $\tfrac{1}{K-1}\sum_{k\neq k^*} G(f,k)$ (una referencia escala-agnóstica que \emph{excluye} $k^*$ para no correlacionar el baseline con el numerador $G(f,k^*)$), verificando que el \emph{ranking} de descriptores se mantenga estable entre ambas. Evitamos deliberadamente usar la peor escala $\min_k G$ como baseline: ese caso reduce el TSI al \emph{rango} $G(f,k^*)-\min_k G$, una cantidad sujeta al mismo sesgo de selección (argmax y argmin sobre los mismos datos) y que descarta la escala intermedia, justamente lo que criticamos en la validación estadística.
 
-% REVISAR: M2 del revisor. TSI_rel divide por G(f,k*), pequeno justo en descriptores con
-% efecto piso (los que dice arreglar) -> inestable. Se restringe al regimen donde la
-% compuerta se cumple, se reporta su IC bootstrap y se degrada a metrica secundaria.
+
 Para comparar descriptores de dimensionalidad muy dispar reportamos, como métrica \emph{secundaria}, la variante relativa
 \begin{equation}
     \mathrm{TSI}_{\mathrm{rel}}(f) = \frac{G(f,k^*)-G(f,\bar{k})}{G(f,k^*)},
@@ -414,23 +386,15 @@ Para comparar descriptores de dimensionalidad muy dispar reportamos, como métri
 \end{equation}
 que expresa el payoff como fracción de la discriminabilidad máxima del descriptor y es comparable entre descriptores escalares (ZCR, $\sim$4 dims por pista) y de alta dimensión (MFCC, $\sim$80 dims por pista). Advertimos explícitamente que $\mathrm{TSI}_{\mathrm{rel}}$ es \emph{numéricamente inestable} cuando $G(f,k^*)$ es pequeño ---el mismo régimen de efecto piso que pretende mitigar---, por lo que (i) la restringimos a descriptores cuya compuerta se cumple, (ii) reportamos siempre su IC \textit{bootstrap}, típicamente ancho cerca del piso, y (iii) la usamos solo como diagnóstico complementario: la métrica primaria y accionable es el $\mathrm{TSI}$ absoluto, en la unidad interpretable de $G$.
 
-% REVISAR: M4 del revisor. Se colapsa el "zoo de metricas": el TSI (payoff) es la UNICA
-% metrica primaria; TSI_rel queda como chequeo de comparabilidad secundario. La dispersion
-% std_k G (antes "TSD") se retira del cuerpo para no fragmentar la contribucion; si acaso,
-% se reportaria en un apendice como estadistico puramente descriptivo.
+
 Para evitar fragmentar la contribución en métricas competidoras, el $\mathrm{TSI}$ (payoff absoluto) es la \emph{única} métrica primaria del trabajo; $\mathrm{TSI}_{\mathrm{rel}}$ se reporta solo como chequeo de comparabilidad entre dimensionalidades (con las salvedades anteriores). No introducimos una métrica de dispersión separada: la pregunta ``¿varía la discriminabilidad entre escalas?'' la responde la prueba de Friedman sobre la matriz de ganancia, no un escalar adicional.
 
 La \textbf{calibración} es indispensable para que $G$ sea interpretable como información y se mantenga cercano a $[0,1]$ (véase la limitación sobre $G<0$): XGBoost y Random Forest se calibran con \texttt{CalibratedClassifierCV} (sigmoide, 3 folds); SVM mediante escalado de Platt (\texttt{probability=True}); MLP mediante \textit{temperature scaling} ajustado en el conjunto de validación.
 
-% REVISAR: M1 y m4 del revisor. Se separan dos preguntas distintas: (a) Friedman prueba si
-% G DIFIERE entre escalas (diagnostico); (b) el criterio de "explotable" se liga al PAYOFF
-% (TSI>0), no a Friedman. Se unifica la definicion anidada de k* para punto/IC/compuerta y
-% se especifica que la nula de permutacion re-selecciona el argmax, mas el reporte del
-% sesgo optimista residual.
-La \textbf{validación estadística por descriptor} distingue dos preguntas. Primero, ¿\emph{difiere} la discriminabilidad entre escalas? Lo evalúa la prueba omnibus de Friedman sobre $G(f,s)$, $G(f,m)$, $G(f,l)$ fold a fold ($\alpha=0.05$), con post-hoc de Nemenyi; al evaluar las $K=3$ escalas conjuntamente evita el sesgo de selección de comparar solo $G(f,k^*)$ contra $G(f,k_{\min})$ (argmax/argmin sobre los mismos datos), que descartaría la escala intermedia y daría $p$-valores anticonservadores. Segundo, y distinto, ¿es el \emph{payoff} positivo, es decir, $\mathrm{TSI}(f)>0$? Un descriptor puede tener escalas que difieren (Friedman significativo) y aun así $\mathrm{TSI}\approx 0$ si la convención $\bar k$ ya es casi óptima. Por ello el criterio operativo de descriptor \emph{temporalmente explotable} se liga al payoff: el límite inferior del IC \textit{bootstrap} del 95\% (1\,000 remuestreos sobre \textit{folds}) de la diferencia $G(f,k^*)-G(f,\bar k)$ debe superar $0$, \emph{y} la compuerta $G(f,k^*)>\tau$ debe cumplirse. Para que ni el estimador puntual ni su IC sean optimistas, $k^*$ se selecciona siempre por selección anidada en \textit{folds} internos (nunca por argmax in-sample), y la distribución nula que fija $\tau$ se genera permutando etiquetas y \emph{re-seleccionando el argmax dentro de cada réplica}, de modo que la nula refleje el sesgo de maximización. \textcolor{red}{El argmax de la nula se recomputa por réplica sobre las ganancias por \textit{fold} (no de forma anidada); esto hace que $\tau$ resulte, si acaso, ligeramente conservador ---un sesgo en la dirección segura. La nula por tarea agrega las réplicas de permutación sobre los siete descriptores y los \textit{folds} para estimar el percentil con muestra suficiente.} Reportamos además el sesgo optimista residual como la diferencia entre el TSI estimado in-sample y el anidado out-of-fold, como diagnóstico de honestidad del estimador.
 
-% REVISAR: Se nombra explicitamente "matriz de ganancia G" para distinguirla de la matriz
-% de importancia PI/MDI (tambien 7x3).
+La \textbf{validación estadística por descriptor} distingue dos preguntas. Primero, ¿\emph{difiere} la discriminabilidad entre escalas? Lo evalúa la prueba omnibus de Friedman sobre $G(f,s)$, $G(f,m)$, $G(f,l)$ fold a fold ($\alpha=0.05$), con post-hoc de Nemenyi; al evaluar las $K=3$ escalas conjuntamente evita el sesgo de selección de comparar solo $G(f,k^*)$ contra $G(f,k_{\min})$ (argmax/argmin sobre los mismos datos), que descartaría la escala intermedia y daría $p$-valores anticonservadores. Segundo, y distinto, ¿es el \emph{payoff} positivo, es decir, $\mathrm{TSI}(f)>0$? Un descriptor puede tener escalas que difieren (Friedman significativo) y aun así $\mathrm{TSI}\approx 0$ si la convención $\bar k$ ya es casi óptima. Por ello el criterio operativo de descriptor \emph{temporalmente explotable} se liga al payoff: el límite inferior del IC \textit{bootstrap} del 95\% (1\,000 remuestreos sobre \textit{folds}) de la diferencia $G(f,k^*)-G(f,\bar k)$ debe superar $0$, \emph{y} la compuerta $G(f,k^*)>\tau$ debe cumplirse. Para que ni el estimador puntual ni su IC sean optimistas, $k^*$ se selecciona siempre por selección anidada en \textit{folds} internos (nunca por argmax in-sample), y la distribución nula que fija $\tau$ se genera permutando etiquetas y \emph{re-seleccionando el argmax dentro de cada réplica}, de modo que la nula refleje el sesgo de maximización. El argmax de la nula se recomputa por réplica sobre las ganancias por \textit{fold} (no de forma anidada); esto hace que $\tau$ resulte, si acaso, ligeramente conservador ---un sesgo en la dirección segura. Reportamos además el sesgo optimista residual como la diferencia entre el TSI estimado in-sample y el anidado out-of-fold, como diagnóstico de honestidad del estimador.
+
+
 Los resultados se visualizan como una \textbf{matriz de ganancia $7\times 3$} (descriptores $\times$ escalas), donde cada celda contiene $G(f,k)\pm\sigma$, sobre la cual se anotan $k^*(f)$ y el TSI por descriptor. Esta matriz de ganancia es conceptualmente distinta de la \emph{matriz de importancia} $7\times 3$ basada en \textit{permutation importance} y MDI (Sec.~\ref{sec:importancia}): la primera mide discriminabilidad univariada calibrada por descriptor aislado; la segunda mide contribución marginal dentro del modelo multivariado conjunto.
 
 La consistencia del TSI entre tareas y clasificadores se evalúa correlacionando los \emph{rankings} de descriptores (no los valores) mediante Spearman $\rho$; los detalles y advertencias del procedimiento se exponen en la Sec.~\ref{subsec:validacion}.
@@ -448,17 +412,13 @@ clasificador \cite{tamm2024comparative}:
     \item \textbf{Support Vector Machine (SVM):} Kernel RBF, hiperparámetros ($C$, $\gamma$) ajustados mediante validación cruzada de 3 folds; calibrado via escalado de Platt (\texttt{probability=True}). Para la representación \textit{early fusion} ($\mathbb{R}^{576}$), el entrenamiento se realiza con submuestreo aleatorio del 50\% de las pistas de entrenamiento en MTAT para mantener tiempos de cómputo manejables, reportando este
     compromiso explícitamente.
 
-    \item \textbf{Multi-Layer Perceptron (MLP):} Dos capas ocultas (256, 128), activación ReLU, \textit{dropout} 0.3 y regularización L2 ($\lambda = 10^{-4}$), entrenado por 100 épocas con Adam ($\text{lr} = 10^{-3}$) y \textit{early stopping} (paciencia 10); calibrado mediante \textit{temperature scaling} ajustado en el conjunto de validación. \textcolor{red}{Cuando no se dispone de un conjunto de validación externo, el MLP reserva internamente el 15\% de las pistas de entrenamiento del \textit{fold} para el \textit{early stopping} y el ajuste de temperatura.}
+    \item \textbf{Multi-Layer Perceptron (MLP):} Dos capas ocultas (256, 128), activación ReLU, \textit{dropout} 0.3 y regularización L2 ($\lambda = 10^{-4}$), entrenado por 100 épocas con Adam ($\text{lr} = 10^{-3}$) y \textit{early stopping} (paciencia 10); calibrado mediante \textit{temperature scaling} ajustado en el conjunto de validación.
     Para MTAT, la función de pérdida es \textit{weighted binary cross-entropy}; para las demás tareas, \textit{cross-entropy} estándar.
 \end{itemize}
 
 Para GTZAN: \textit{repeated} validación cruzada estratificada de $5 \times$10 folds para aumentar la potencia estadística de la prueba de Wilcoxon.
-% REVISAR: decision de protocolo. Tanto el TSI como la comparacion de fusion en
-% FMA-small y MTAT se reportan sobre validacion cruzada repetida (no la particion
-% oficial como primaria), porque el IC por fold de la compuerta/payoff y el Wilcoxon
-% pareado entre estrategias requieren una distribucion fold-a-fold; la particion
-% oficial se reporta como referencia secundaria.
-\textcolor{red}{Para FMA-small y MTAT, tanto el cómputo del TSI como la comparación entre estrategias de fusión se realizan sobre validación cruzada estratificada repetida ($K$-fold): la distribución fold a fold es necesaria para el intervalo de confianza de la compuerta $\tau$ y del \textit{payoff}, y para la prueba de Wilcoxon pareada entre estrategias (una partición única no admite test pareado). Reportamos adicionalmente el desempeño sobre la partición oficial (\textit{train/validation/test} en FMA-small; 12:1:3 en MTAT) como referencia secundaria para comparabilidad con la literatura.}
+
+Para FMA-small y MTAT, tanto el cómputo del TSI como la comparación entre estrategias de fusión se realizan sobre validación cruzada estratificada repetida ($K$-fold): la distribución fold a fold es necesaria para el intervalo de confianza de la compuerta $\tau$ y del \textit{payoff}, y para la prueba de Wilcoxon pareada entre estrategias (una partición única no admite test pareado). Reportamos adicionalmente el desempeño sobre la partición oficial (\textit{train/validation/test} en FMA-small; 12:1:3 en MTAT) como referencia secundaria para comparabilidad con la literatura.
 Para IRMAS: partición oficial \textit{train/test} proporcionada por los autores del dataset \cite{bosch2012comparison}.
 
 \subsection{Métricas de evaluación}
@@ -473,8 +433,7 @@ Para IRMAS: partición oficial \textit{train/test} proporcionada por los autores
     \item \textbf{Reconocimiento de instrumentos} (IRMAS): \textit{Accuracy} global y F1 macro-promediado. Como la distribución de clases es aproximadamente balanceada, ambas métricas tienden a ser cercanas; reportamos las dos para facilitar la comparación con la literatura y para detectar desbalances residuales por clase.
 \end{itemize}
 
-% REVISAR: Se eliminan las referencias huerfanas a RQ1/RQ3 (las RQ estan comentadas). Se
-% anade \label{sec:importancia} para el cruce con la matriz de ganancia.
+
 \subsection{Análisis de importancia de \textit{features}}
 \label{sec:importancia}
 
@@ -499,23 +458,16 @@ La validación estadística opera en dos niveles.
 
 \textbf{Por descriptor (sensibilidad temporal):} aplicamos el procedimiento unificado de la Sec.~\ref{subsec:tsi}: la prueba omnibus de Friedman sobre $G(f,s)$, $G(f,m)$, $G(f,l)$ (con post-hoc de Nemenyi) responde si la discriminabilidad \emph{difiere} entre escalas, mientras que el criterio operativo de descriptor \emph{temporalmente explotable} es que el límite inferior del IC \textit{bootstrap} del 95\% del payoff $G(f,k^*)-G(f,\bar k)$ supere $0$ y se cumpla la compuerta $G(f,k^*)>\tau$. Para evitar incoherencias, este criterio de payoff ---no la mera significancia de Friedman--- es el que gobierna la etiqueta ``temporalmente explotable''.
 
-% REVISAR: Cinco estrategias => C(5,2)=10 comparaciones => Bonferroni de 6 a 10
-% (alpha_corr=0.005). Implica re-ejecutar el bloque de comparacion de fusion.
+
 \textbf{Entre estrategias de fusión:} La comparación se hace sobre un conjunto de \emph{cinco} estrategias, donde \textit{single-scale} entra como una única representante ---la mejor escala única, seleccionada en \textit{folds} internos para no introducir un sesgo de selección adicional--- junto con \textit{early}, \textit{late}, \textit{TSI-guided scale selection} y \textit{TSI-weighted late fusion}. Se evalúan con la prueba de Wilcoxon sobre las métricas por \textit{fold}, con corrección de Bonferroni para las $\binom{5}{2}=10$ comparaciones por pares ($\alpha_{\text{corr}}=0.05/10=0.005$). Cada comparación se realiza \emph{dentro} del mismo clasificador y régimen de muestreo, de modo que diferencias de tamaño de entrenamiento (p.\,ej.\ el submuestreo del 50\% en SVM/MTAT) no contaminen la comparación entre estrategias. Los tamaños de efecto se reportan con delta de Cliff \cite{cliff1993dominance}, con umbrales pequeño $|\delta|\geq 0.147$, mediano $|\delta|\geq 0.33$, grande $|\delta|\geq 0.474$ \cite{romano2006exploring}.
 
-% REVISAR: rho>0.7 se declara convencion (no prueba); "propiedades intrinsecas" ->
-% "evidencia compatible con".
+
 La consistencia entre tareas y clasificadores se evalúa con Spearman $\rho$ (IC 95\% \textit{bootstrap}) sobre los \emph{rankings} de descriptores ---no sobre los valores de $G$, que no son conmensurables entre una tarea multiclase de 10 géneros y una multietiqueta de 50 \textit{tags}, con distinto techo efectivo de $G$ y distinta sensibilidad a la calibración. Adoptamos $\rho>0.7$ como umbral convencional, no como prueba. Advertimos además que el ordenamiento de descriptores puede estar gobernado por la naturaleza de la tarea (el timbre domina en reconocimiento de instrumentos, la armonía en género), por lo que una correlación alta entre rankings debe interpretarse con cautela: la leemos como \emph{evidencia compatible con} ---no demostración de--- que los patrones reflejan propiedades acústicas de los descriptores más que artefactos del clasificador o del \textit{dataset}.
 
-% REVISAR: subseccion nueva de limitaciones (contenido). Reconoce tres
-% confundidos/amenazas a la validez (dimensionalidad dispar y efecto piso,
-% dependencia de la calibracion, y colapso de la escala larga en IRMAS). No
-% altera resultados, pero (b) implica reportar ECE/reliability diagrams y definir
-% el manejo de G<0, lo que conviene incorporar al protocolo experimental.
+
 \subsection{Limitaciones}
 
-% REVISAR: La limitacion de dimensionalidad/efecto piso se conecta con el rediseno: la
-% compuerta y TSI_rel mitigan ambos confundidos.
+
 Tres limitaciones acotan la interpretación del TSI. Primero, comparar la ganancia $G$ entre descriptores de dimensionalidad muy dispar es un confundido: tras la doble agregación media+desviación (\textit{frame}$\to$ventana$\to$pista, $\times 4$ sobre la dimensión a nivel de \textit{frame}), el MFCC aporta $\sim$80 dimensiones por pista frente a $\sim$4 del ZCR, de modo que un payoff temporal pequeño en descriptores escalares podría reflejar un \emph{efecto piso} ---poca capacidad discriminativa absoluta en cualquier escala--- y no robustez temporal genuina. Mitigamos este confundido por dos vías: la compuerta de informatividad (Ec.~\ref{eq:tsi}) anula el TSI de descriptores cuya ganancia óptima no supera el azar, y la variante relativa $\mathrm{TSI}_{\mathrm{rel}}$ (Ec.~\ref{eq:tsirel}) normaliza el payoff por la ganancia máxima del propio descriptor, haciéndolo comparable entre dimensionalidades. Aun así, las comparaciones absolutas de TSI son más fiables entre descriptores de dimensionalidad comparable. Segundo, la interpretación de $G \in [0,1]$ depende de la calidad de la calibración de probabilidades; reportamos el \textit{Expected Calibration Error} (ECE) y \textit{reliability diagrams} por clasificador, y truncamos a $G = 0$ los casos en que la calibración imperfecta produce $L(f,k) > L_{\text{chance}}$ (es decir, $G < 0$), interpretándolos como ausencia de información útil. Tercero, en IRMAS los clips duran solo 3\,s, por lo que la escala larga ($w_l = 5$\,s) colapsa a la duración completa del clip y deja de ser una escala independiente; esto debilita la comparabilidad de la consistencia \textit{cross-dataset} en esa escala, que reportamos con la salvedad correspondiente.
 
 \bibliographystyle{IEEEtran}
