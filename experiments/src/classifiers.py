@@ -33,6 +33,36 @@ except ImportError:  # pragma: no cover - torch present in the Colab runtime
 EARLY_FUSION_DIM = 576
 
 
+# --------------------------------------------------------------------------- #
+# Global-class-space helpers
+# --------------------------------------------------------------------------- #
+# A training subset can lack some of the global classes (e.g. the IRMAS official
+# split, whose train partition need not cover all 11 instruments). XGBoost's
+# sklearn wrapper additionally requires labels to be exactly ``0..k-1``. These
+# helpers let the multiclass wrappers (a) fit the underlying estimator on a dense
+# ``0..k-1`` relabelling of whatever classes are present, and (b) re-expand
+# ``predict_proba`` back to the GLOBAL ``n_classes`` width that downstream code
+# (``gain_from_predictions``) assumes — absent classes get probability 0.
+
+def _dense_relabel(y: np.ndarray):
+    """Return ``(present_classes_sorted, y_dense)`` mapping labels to ``0..k-1``."""
+    present, y_dense = np.unique(np.asarray(y), return_inverse=True)
+    return present, y_dense
+
+
+def _expand_proba(proba: np.ndarray, present: Optional[np.ndarray],
+                  n_classes: Optional[int]) -> np.ndarray:
+    """Scatter a ``(n, len(present))`` proba matrix into the global ``n_classes``
+    width. ``present`` is sorted, matching sklearn/XGBoost ``classes_`` column
+    order, so column ``j`` maps to global class ``present[j]``. No-op when the
+    matrix is already full width (the common case) or ``n_classes`` is unknown."""
+    if n_classes is None or present is None or proba.shape[1] == n_classes:
+        return proba
+    full = np.zeros((proba.shape[0], n_classes), dtype=proba.dtype)
+    full[:, present.astype(int)] = proba
+    return full
+
+
 def _make_rf_estimator(n_estimators: int, max_depth: int, random_state: int):
     """Return a cuML RandomForestClassifier if available, else sklearn's.
 
@@ -112,7 +142,10 @@ class RFClassifier:
 
     def __init__(self, n_estimators: int = 500, max_depth: int = 30,
                  random_state: int = 42, calibrate: bool = True,
-                 calibration_method: str = 'sigmoid', calibration_cv: int = 3):
+                 calibration_method: str = 'sigmoid', calibration_cv: int = 3,
+                 n_classes: Optional[int] = None):
+        self.n_classes = n_classes
+        self._present = None
         self.base = _make_rf_estimator(n_estimators, max_depth, random_state)
         # which backend was actually selected, for reproducibility reporting
         self.backend = 'cuml' if type(self.base).__name__ == '_CuMLRFWrapper' else 'sklearn'
@@ -129,6 +162,7 @@ class RFClassifier:
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         X_scaled = self.scaler.fit_transform(X)
+        self._present = np.unique(np.asarray(y))
         self.model.fit(X_scaled, y)
         return self
 
@@ -138,7 +172,8 @@ class RFClassifier:
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         X_scaled = self.scaler.transform(X)
-        return self.model.predict_proba(X_scaled)
+        return _expand_proba(self.model.predict_proba(X_scaled),
+                             self._present, self.n_classes)
 
     @property
     def feature_importances_(self):
@@ -160,8 +195,11 @@ class XGBoostClassifier:
     def __init__(self, n_estimators: int = 500, max_depth: int = 6,
                  learning_rate: float = 0.1, random_state: int = 42,
                  calibrate: bool = True, calibration_method: str = 'sigmoid',
-                 calibration_cv: int = 3, device: Optional[str] = None):
+                 calibration_cv: int = 3, device: Optional[str] = None,
+                 n_classes: Optional[int] = None):
         from xgboost import XGBClassifier as _XGBClassifier
+        self.n_classes = n_classes
+        self._present = None
         # ``device=None`` -> auto-detect (GPU if torch sees one). Pass ``'cpu'``
         # explicitly to force the CPU ``hist`` method: for the tiny per-descriptor
         # fits in the TSI sweep the GPU's per-round kernel-launch overhead usually
@@ -201,16 +239,21 @@ class XGBoostClassifier:
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         X_scaled = self.scaler.fit_transform(X)
-        self.model.fit(X_scaled, y)
+        # XGBoost requires contiguous 0..k-1 labels; relabel whatever classes are
+        # present so a non-contiguous subset (e.g. IRMAS official split) trains.
+        self._present, y_dense = _dense_relabel(y)
+        self.model.fit(X_scaled, y_dense)
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         X_scaled = self.scaler.transform(X)
-        return self.model.predict(X_scaled)
+        # map dense predictions back to the original global class ids
+        return self._present[self.model.predict(X_scaled)]
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         X_scaled = self.scaler.transform(X)
-        return self.model.predict_proba(X_scaled)
+        return _expand_proba(self.model.predict_proba(X_scaled),
+                             self._present, self.n_classes)
 
     @property
     def feature_importances_(self):
@@ -235,9 +278,12 @@ class SVMClassifier:
     the full per-fold training set; see :meth:`_should_subsample`.
     """
 
-    def __init__(self, random_state: int = 42, subsample: Optional[float] = None):
+    def __init__(self, random_state: int = 42, subsample: Optional[float] = None,
+                 n_classes: Optional[int] = None):
         self.random_state = random_state
         self.subsample = subsample
+        self.n_classes = n_classes
+        self._present = None
         self.scaler = StandardScaler()
         self.model = None
 
@@ -277,6 +323,7 @@ class SVMClassifier:
             svm, param_grid, cv=3, scoring='f1_macro',
             n_jobs=-1, refit=True
         )
+        self._present = np.unique(np.asarray(y_fit))
         grid.fit(X_fit, y_fit)
         self.model = grid.best_estimator_
 
@@ -288,7 +335,8 @@ class SVMClassifier:
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         X_scaled = self.scaler.transform(X)
-        return self.model.predict_proba(X_scaled)
+        return _expand_proba(self.model.predict_proba(X_scaled),
+                             self._present, self.n_classes)
 
 
 def inverse_frequency_pos_weight(
@@ -648,17 +696,17 @@ def get_classifier(name: str, input_dim: int, n_classes: int,
     if name == 'mlp':
         return MLPClassifier(n_classes=n_classes, task_type=task_type, **kwargs)
 
-    base_factories = {
-        'rf': lambda: RFClassifier(**kwargs),
-        'xgb': lambda: XGBoostClassifier(**kwargs),
-        'svm': lambda: SVMClassifier(**kwargs),
-    }
-    if name not in base_factories:
+    ctors = {'rf': RFClassifier, 'xgb': XGBoostClassifier, 'svm': SVMClassifier}
+    if name not in ctors:
         raise ValueError(f"Unknown classifier: {name}. Choose from ['rf', 'xgb', 'svm', 'mlp']")
 
     if task_type == 'multilabel':
-        return MultiLabelWrapper(base_factories[name], n_tags=n_classes)
-    return base_factories[name]()
+        # per-tag BINARY classifiers: their class space is {0,1}, never the global
+        # tag count, so n_classes is deliberately NOT forwarded here.
+        return MultiLabelWrapper(lambda: ctors[name](**kwargs), n_tags=n_classes)
+    # multiclass: give the wrapper the global class space so predict_proba stays
+    # n_classes-wide even when a training subset lacks some classes.
+    return ctors[name](n_classes=n_classes, **kwargs)
 
 
 def make_clf_factory(clf_name: str, dataset: Optional[str] = None, **extra):
