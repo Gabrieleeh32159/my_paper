@@ -3,7 +3,7 @@
 Implementation of the **redesigned (payoff)** TSI method. The source of truth for
 the method is `paper/proposal.tex`; this folder is the executable companion. Any
 older code (dispersion `std_k G`, Wilcoxon best-vs-worst, multiplicative TSI
-weights) has been removed — the backup lives in `../experiments_legacy.zip`.
+weights) has been removed.
 
 ## Layout
 
@@ -18,8 +18,13 @@ experiments/
 │   ├── fusion.py         # the 5 fusion strategies (learned LF weights)
 │   ├── stats.py          # Friedman/Nemenyi, Wilcoxon+Bonferroni, Cliff, Spearman
 │   ├── importance.py     # PI / MDI (corroborative only)
+│   ├── checkpoint.py     # crash-safe resume: load/save (fold, descriptor) progress
+│   ├── progress.py       # progress-bar helpers (tqdm)
 │   └── extract_worker.py # optional parallel extraction worker
-├── tests/test_method.py  # synthetic-data unit tests (no Drive needed)
+├── tests/
+│   ├── test_method.py                  # synthetic-data unit tests (no Drive needed)
+│   ├── test_checkpoint.py              # checkpoint save/resume tests
+│   └── test_classifier_label_subset.py # non-contiguous label-subset regression test
 ├── results/
 │   ├── show.py                 # prints results as Markdown tables
 │   ├── _gen_example_results.py # regenerates the example JSONs below
@@ -73,6 +78,9 @@ Both notebooks (1) mount Drive, (2) clone this repo to `/content/my_paper`,
    bootstrap CI, `TSI_rel`, residual optimism), the 7×3 gain matrix, the 5 fusion
    strategies, and the statistical validation. It writes `tsi_results.json` and
    `experiment_results.json` to `RESULTS_ROOT` and mirrors them to `results/`.
+   The heavy stages **checkpoint after every (fold, descriptor)/(perm, fold)** to
+   `RESULTS_ROOT/checkpoints` (`RESUME=True`), so a killed Colab session resumes
+   from where it stopped simply by re-running the cells.
 
 ### Method summary (see the paper for full detail)
 

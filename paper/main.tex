@@ -1,0 +1,410 @@
+% This is samplepaper.tex, a sample chapter demonstrating the
+% LLNCS macro package for Springer Computer Science proceedings;
+% Version 2.21 of 2022/01/12
+%
+\documentclass[runningheads]{llncs}
+%
+\usepackage[T1]{fontenc}
+% T1 fonts will be used to generate the final print and online PDFs,
+% so please use T1 fonts in your manuscript whenever possible.
+% Other font encondings may result in incorrect characters.
+%
+\usepackage{graphicx}
+% Used for displaying a sample figure. If possible, figure files should
+% be included in EPS format.
+%
+% If you use the hyperref package, please uncomment the following two lines
+% to display URLs in blue roman font according to Springer's eBook style:
+\usepackage{xcolor} % for \textcolor
+%\renewcommand\UrlFont{\color{blue}\rmfamily}
+%\urlstyle{rm}
+%
+\usepackage{amssymb} % for \texttimes
+\usepackage{amsmath}
+
+\begin{document}
+%
+\title{Temporal Sensitivity Index: Interpretable Scale Selection for Handcrafted Audio Features in Music Information Retrieval
+}
+%
+\titlerunning{Temporal Sensitivity of Handcrafted Audio Descriptors}
+% If the paper title is too long for the running head, you can set
+% an abbreviated paper title here
+%
+% REVISAR: bloque de autor activado. Era un solo autor pero el running head mostraba
+% "et al." (plantilla) y no habia \author definido. Confirmar coautores/asesores y ORCID.
+\author{Gabriel Espinoza Hern\'andez}
+%
+\authorrunning{G. Espinoza Hern\'andez}
+%
+\institute{University of Engineering and Technology (UTEC), Lima, Peru \\
+\email{gabriel.espinoza.h@utec.edu.pe}}
+%
+\maketitle              % typeset the header of the contribution
+%
+\begin{abstract}
+The temporal scale used to aggregate handcrafted audio descriptors is typically fixed a priori in Music Information Retrieval (MIR) systems, despite the fact that different descriptors capture musical information operating at distinct time horizons. This work investigates how temporal aggregation affects the predictive utility of commonly used handcrafted features and proposes the \textbf{Temporal Sensitivity Index (TSI)}, a descriptor-level measure that quantifies the gain obtained by extracting a descriptor at its most informative temporal resolution relative to a conventional reference scale.
+
+Seven widely used audio descriptors are evaluated at three temporal resolutions (200ms, 2s, and 5s) on four MIR benchmarks covering genre classification (GTZAN and FMA-small), music auto-tagging (MagnaTagATune), and instrument recognition (IRMAS). For each descriptor and scale, normalized information gain is estimated from calibrated probabilistic predictions, producing a descriptor-by-scale gain matrix that characterizes temporal sensitivity.
+
+The results show that temporal effects depend strongly on the target task. For both genre-classification datasets, all descriptors achieve their highest information gain at the short temporal scale, \textcolor{red}{suggesting that the commonly used 2s aggregation window is not the most informative for these descriptors; we note, however, that this short-scale advantage is partly confounded with the number of aggregation windows and report it as an observation to be confirmed rather than a settled effect}. Tonnetz exhibits the largest temporal sensitivity (TSI (=0.085) on GTZAN and (0.050) on FMA-small), followed by spectral contrast and chroma features. In contrast, instrument recognition displays only weak temporal effects, while auto-tagging yields near-zero TSI values for all descriptors. \textcolor{red}{Descriptor rankings are identical across the two genre datasets but do not generalize to the remaining tasks.}
+
+These findings show that temporal aggregation should be treated as a descriptor-specific design choice rather than a fixed preprocessing parameter. The proposed TSI provides a simple and interpretable framework for analyzing temporal sensitivity and selecting aggregation scales in handcrafted MIR pipelines.
+
+\keywords{Music Information Retrieval  \and Handcrafted Audio Features \and Temporal Sensitivity Index \and Multi-Scale Analysis.}
+\end{abstract}
+
+
+% ============================================================
+\section{Introduction}
+
+Handcrafted audio descriptors remain a common component of Music Information Retrieval (MIR) systems. Features such as Mel-Frequency Cepstral Coefficients (MFCCs), chroma vectors, spectral descriptors, and zero-crossing rate provide compact and interpretable representations of musical content and continue to be used in genre classification, auto-tagging, instrument recognition, and embedded audio applications \cite{ding2023audio,tamm2024comparative}. These descriptors are typically extracted from short overlapping frames and aggregated over longer temporal windows to obtain fixed-length representations suitable for machine-learning models.
+
+The temporal scale used during aggregation influences the type of musical information retained in the representation. Short windows preserve local timbral and spectral events, whereas longer windows capture broader harmonic, rhythmic, and structural patterns. In practice, however, aggregation scales are usually selected according to convention rather than empirical evidence. Many MIR systems employ windows between one and three seconds or aggregate descriptors across an entire recording without explicitly examining alternative temporal resolutions \cite{peeters2004large}.
+
+Several studies have shown that temporal aggregation affects classification performance. Tzanetakis and Cook \cite{tzanetakis2002musical} observed that texture-window length influences genre-recognition accuracy, while Bergstra et al. \cite{bergstra2006aggregate} reported that intermediate aggregation segments outperform both frame-level and full-track representations. Similar design choices appear in descriptor frameworks such as that of Peeters \cite{peeters2004large} and in the multi-scale analysis tools provided by MIRtoolbox \cite{lartillot2008multi}. Although these studies established the relevance of temporal aggregation, they focused primarily on representation-level comparisons and did not examine how individual descriptors respond to changes in temporal scale.
+
+This distinction is relevant because descriptors capture different musical attributes. MFCCs characterize timbre, chroma features emphasize harmonic content, and Tonnetz representations encode tonal relationships. There is therefore little reason to assume that all descriptors should operate most effectively at the same temporal resolution. Nevertheless, evidence regarding descriptor-specific temporal behavior remains limited.
+
+Interest in temporal scale has also emerged in representation-learning approaches. Multi-resolution architectures have been shown to improve tasks such as music segmentation and structure analysis \cite{serra2014unsupervised,buisson2024self}, while token-based approaches such as OMAR-RQ demonstrate strong performance using fixed-resolution representations \cite{alonso2025omar}. Although these methods confirm the value of temporal context, the contribution of individual temporal resolutions is difficult to isolate because temporal modeling is intertwined with representation learning and model capacity.
+
+This work examines temporal aggregation from the perspective of handcrafted descriptors. We propose the \textbf{Temporal Sensitivity Index (TSI)}, an information-theoretic measure that quantifies the gain obtained when a descriptor is extracted at its most informative temporal resolution rather than at a conventional reference scale. The analysis is conducted on seven commonly used audio descriptors evaluated at three temporal scales (200ms, 2s, and 5s) across four MIR benchmarks covering genre classification, music auto-tagging, and instrument recognition.
+
+The contributions of this work are threefold:
+
+\begin{enumerate}
+\item We define the \textbf{Temporal Sensitivity Index (TSI)}, a descriptor-level measure of temporal sensitivity based on normalized information gain.
+\item We provide a systematic comparison of seven handcrafted audio descriptors across multiple temporal resolutions and MIR tasks.
+\item We evaluate scale-aware fusion strategies derived from descriptor-specific temporal sensitivity and analyze their effectiveness across datasets.
+\end{enumerate}
+
+
+
+% ============================================================
+\section{Related Work}
+Research relevant to this study falls into three areas: handcrafted audio descriptors and temporal aggregation, multi-scale music representations, and feature fusion in Music Information Retrieval (MIR). While temporal context has been considered in each of these areas, relatively little work has examined how individual descriptors respond to changes in temporal resolution.
+
+\textbf{Handcrafted Audio Descriptors and Temporal Aggregation.} Handcrafted descriptors continue to play a central role in MIR because they provide compact and interpretable representations of musical content. Commonly used descriptors include Mel-Frequency Cepstral Coefficients (MFCCs), chroma features, spectral descriptors, Tonnetz representations, and zero-crossing rate (ZCR) \cite{muller2015fundamentals,lerch2012introduction}. These features are usually extracted from short analysis frames and aggregated over longer temporal windows to obtain fixed-length representations suitable for classification.
+
+Several studies have examined the effect of temporal aggregation. Tzanetakis and Cook \cite{tzanetakis2002musical} reported that texture-window length affects genre-classification accuracy, while Bergstra et al. \cite{bergstra2006aggregate} found that intermediate aggregation segments outperform both frame-level and full-track representations. Peeters \cite{peeters2004large} proposed a large collection of audio descriptors aggregated over fixed texture windows, and Lartillot et al. \cite{lartillot2008multi} incorporated multi-resolution analysis into MIRtoolbox. These studies demonstrated that temporal aggregation influences predictive performance, but their focus remained on complete representations rather than on the behavior of individual descriptor families.
+
+\textbf{Multi-Scale Music Representations.} Representing music at multiple temporal resolutions has long been used in structure analysis and segmentation \cite{serra2014unsupervised}. More recent representation-learning approaches have adopted similar ideas. Buisson et al. \cite{buisson2024self} reported improvements in music segmentation using representations learned across multiple structural levels, whereas OMAR-RQ \cite{alonso2025omar} obtained competitive results using a fixed-resolution tokenization strategy. SemiSupCon \cite{guinot2024semi} likewise demonstrated that representation quality can benefit from contrastive learning objectives that exploit temporal relationships within musical recordings.
+
+Although these approaches incorporate temporal information, the contribution of individual temporal scales is difficult to isolate because temporal modeling is intertwined with representation learning and model architecture. As a result, they offer limited evidence regarding the temporal behavior of specific audio descriptors.
+
+\textbf{Feature Fusion in MIR.} Combining complementary sources of musical information is a common strategy in MIR. Early fusion concatenates descriptors prior to classification, whereas late fusion combines the predictions of independently trained models \cite{hamel2011temporal}. Both approaches have been applied successfully across a wide range of audio-classification tasks.
+
+Previous studies have shown that temporal pooling and representation combination can influence classification performance \cite{hamel2011temporal}. Likewise, comparisons of modern audio representations indicate that different feature sets often capture complementary information and may benefit from fusion \cite{tamm2024comparative,ding2023audio}. Most existing fusion approaches, however, either assume a fixed temporal representation or rely on heuristic weighting schemes. The role of descriptor-specific temporal behavior in fusion has received comparatively little attention.
+
+The present study builds on these lines of work by focusing on descriptor-level temporal sensitivity. Unlike previous comparisons of aggregation windows or multi-scale representations, the proposed framework quantifies how the predictive contribution of each descriptor changes across temporal scales and examines whether these measurements can be used to guide scale selection and fusion. In this sense, the work lies at the intersection of temporal aggregation, multi-scale analysis, and feature fusion, while maintaining the interpretability associated with handcrafted MIR descriptors.
+
+
+
+% ============================================================
+\section{Methodology}
+
+Conventional MIR systems typically extract handcrafted descriptors at a fixed temporal resolution, implicitly assuming that all descriptors are equally informative at that scale. However, musical information emerges across multiple temporal horizons, ranging from short timbral events to longer harmonic and structural patterns. To address this limitation, we propose a framework for quantifying and exploiting descriptor-level temporal sensitivity through the \textbf{Temporal Sensitivity Index (TSI)}. 
+
+Figure~\ref{fig:methodology} illustrates the complete experimental pipeline. Each audio recording is first preprocessed and represented at multiple temporal resolutions. Handcrafted descriptors are then extracted and aggregated into fixed-length representations. Descriptor-level predictive utility is estimated through nested cross-validation, allowing the computation of the proposed Temporal Sensitivity Index (TSI). Finally, the resulting temporal-sensitivity profiles are used to construct and evaluate scale-aware fusion strategies.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=1\linewidth]{methodology.png}
+    \caption{Methodological overview. Audio recordings are represented at three temporal resolutions (200ms, 2s, and 5s) and characterized using seven handcrafted music descriptors. Descriptor-level predictive utility is quantified through normalized information gain, enabling estimation of the optimal temporal scale and the proposed Temporal Sensitivity Index (TSI). Temporal-sensitivity profiles are subsequently used to construct scale-aware fusion strategies and are evaluated across four Music Information Retrieval benchmarks using nested cross-validation and statistical significance testing.}
+    \label{fig:methodology}
+\end{figure}
+
+\textbf{a) Audio Preprocessing.} Let $x(t)$ denote an audio recording. All recordings are converted to mono and resampled to 16kHz. Leading and trailing silence are removed using a 20dB top-dB threshold to reduce the influence of non-musical segments. No data augmentation is applied, allowing the effect of temporal aggregation to be studied in isolation. The resulting waveform is used as the common input for all subsequent temporal representations.
+
+\textbf{b) Temporal Rescaling.} Rather than representing each recording at a single temporal resolution, we construct three complementary views of the signal using aggregation windows of different durations. The short scale ($w_s=200$ms) emphasizes local timbral and spectral events and approximately matches the temporal integration window of human auditory perception \cite{bregman1994auditory}. The medium scale ($w_m=2$s) captures local rhythmic and harmonic context\textcolor{red}{~\cite{fraisse1978time}}, while the long scale ($w_l=5$s) provides access to more sustained tonal and structural information. For IRMAS, where excerpts are approximately three seconds long, the long temporal scale collapses to the clip duration. Consequently, only two effective scales are available for this dataset\textcolor{red}{, and the medium ($2$s) scale remains the TSI reference, so $k^*\in\{s,m\}$ for IRMAS}.
+
+\textbf{c) Descriptor Extraction and Aggregation.} For each temporal scale, frame-level descriptors are extracted from Short-Time Fourier Transform (STFT) representations \textcolor{red}{using \texttt{librosa}~\cite{mcfee2015librosa}}. Seven descriptor families are considered: MFCCs, chroma features, spectral centroid, spectral contrast, spectral rolloff, zero-crossing rate (ZCR), and Tonnetz descriptors.
+
+For descriptor family $f$ and temporal scale $k\in\{s,m,l\}$, extraction yields
+
+\begin{equation}
+\mathbf{z}^{(f)}_k=
+\{\mathbf{z}^{(f)}_{k,1},\ldots,\mathbf{z}^{(f)}_{k,N_k}\},
+\end{equation}
+\noindent where $N_k$ denotes the number of frames associated with scale $k$.
+
+Because recordings contain variable numbers of frames, a fixed-dimensional representation is required. A two-stage aggregation procedure is employed. Descriptor values are first summarized within each temporal window using their mean and standard deviation. These window-level representations are then aggregated across the entire recording using the same statistics.
+
+The resulting scale-specific representation is $\mathbf{x}_k \in \mathbb{R}^{192}$ yielding one feature vector per temporal scale.
+
+\textbf{d) Model Training and Validation.} Temporal sensitivity is estimated using nested cross-validation (Figure~\ref{fig:methodology}d). An outer loop provides unbiased evaluation, while an inner loop is used for model selection and hyperparameter tuning.
+
+All feature representations are standardized using z-score normalization, with parameters estimated exclusively from the training folds.
+
+XGBoost serves as the primary classifier because of its robustness and strong performance on tabular audio representations. \textcolor{red}{All results reported in this paper use XGBoost; assessing whether the temporal-sensitivity rankings are stable across classifier families (Random Forest, SVM, MLP) is left to future work, and the present conclusions should be read as classifier-specific.}
+
+Because the proposed metric relies on probabilistic predictions, all classifiers are calibrated before evaluation. XGBoost and Random Forest predictions are calibrated using sigmoid calibration, SVM outputs using Platt scaling, and MLP outputs using temperature scaling.
+
+Unless otherwise stated, all reported results correspond to the primary XGBoost model.
+
+\textbf{e.1)Temporal Sensitivity Index.} For descriptor $f$ and temporal scale $k$, predictive utility is quantified through the normalized information gain
+
+\begin{equation}
+G(f,k)=1-\frac{L(f,k)}{L_{\mathrm{chance}}},
+\end{equation}
+
+\noindent where $L(f,k)$ denotes the calibrated log-loss obtained using descriptor $f$ at scale $k$, and $L_{\mathrm{chance}}$ corresponds to a baseline predictor based on class priors.
+
+The optimal temporal scale is defined as
+
+\begin{equation}
+k^*(f)=\arg\max_k G(f,k).
+\end{equation}
+
+Using the medium scale as a reference, temporal sensitivity is quantified by
+
+\begin{equation}
+TSI(f)=
+\left[
+G(f,k^*)-G(f,m)
+\right]
+\mathbf{1}[G(f,k^*)>\tau].
+\end{equation}
+
+The threshold $\tau$ is estimated through label-permutation testing. Descriptors are considered temporally exploitable only when the observed gain exceeds the permutation-derived threshold and the lower bound of the corresponding bootstrap confidence interval remains positive.
+
+\textbf{e.2)Scale-Aware Fusion Strategies.} The temporal-sensitivity profiles obtained from TSI analysis are subsequently used to construct and evaluate alternative multi-scale representations. The first baseline is early fusion, obtained by concatenating representations from all temporal scales. The second baseline is uniform late fusion, which averages scale-specific prediction probabilities.
+
+Two additional strategies are derived from temporal-sensitivity estimates. TSI-guided scale selection constructs a hybrid representation by assigning each descriptor to its individually optimal scale $k^*(f)$. TSI-weighted late fusion combines scale-specific predictions using weights estimated from validation data under simplex constraints. These strategies are compared against the single-scale baselines in the experimental evaluation.
+
+\section{Results}
+The experiments examine three questions: (i) how descriptor performance varies across temporal scales, (ii) whether temporal-sensitivity patterns remain consistent across datasets and tasks, and (iii) whether these patterns can be used to guide feature fusion.
+
+\textbf{Datasets.} Table~\ref{tab:datasets} summarizes the four benchmark datasets used in this study. Together, they cover three representative MIR tasks: genre classification, music auto-tagging, and instrument recognition.
+
+\begin{table}[!htpb]
+\centering
+\caption{Summary of the datasets used for evaluation. Reported sizes correspond to the nominal dataset statistics.}
+\label{tab:datasets}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+Dataset & Task & Tracks & Classes/Tags & Split \\
+\hline
+GTZAN & Genre Classification & 1,000 & 10 genres & $5\times10$ CV \\
+FMA-small & Genre Classification & 8,000 & 8 genres & Official \\
+MTAT & Auto-tagging & 25,863 & 50 tags & 12:1:3 \\
+IRMAS & Instrument Recognition & 6,705 & 11 instruments & Official \\
+\hline
+\end{tabular}
+\end{table}
+
+GTZAN \cite{tzanetakis2002musical} contains 1,000 excerpts of 30s distributed across ten genres. We use the filtered version proposed by Kereliuk et al. \cite{kereliuk2015counterexample} to mitigate the influence of duplicated recordings and annotation inconsistencies. FMA-small \cite{defferrard2017fma} consists of 8,000 balanced 30s excerpts spanning eight top-level genres and serves as a larger genre-classification benchmark. MagnaTagATune (MTAT) \cite{law2009evaluation} contains 25,863 audio clips annotated with 50 binary tags describing genre, instrumentation, mood, and other semantic attributes, providing a multi-label evaluation setting. IRMAS \cite{bosch2012comparison} comprises 6,705 excerpts labeled according to their predominant instrument among eleven classes.
+
+After feature extraction and quality-control filtering, the effective dataset sizes are 999 recordings for GTZAN, 7,996 for FMA-small, 25,700 for MTAT, and 3,756 for IRMAS. \textcolor{red}{The larger reduction for IRMAS follows from restricting the temporal-sensitivity analysis to the single-label training portion and discarding excerpts that fail feature extraction; the official polyphonic test set is used only for the fusion comparison reported below.}
+% REVISAR: confirmar el criterio exacto del filtrado de IRMAS (6,705 -> 3,756) con los datos reales.
+\textcolor{red}{For computational tractability, the MTAT temporal-sensitivity (TSI) analysis is conducted on a stratified subset of 10,062 of these recordings; gain and TSI values for MTAT therefore correspond to this subset, whereas the other datasets use their full effective sizes.}
+
+\textbf{Experimental Setup.} \textcolor{red}{All} recordings are converted to mono and resampled to 16kHz. Leading and trailing silence are removed using a 20dB top-dB threshold. No data augmentation is applied so that performance differences can be attributed directly to temporal aggregation.
+
+Seven handcrafted descriptor families are extracted at three temporal resolutions: short (200ms), medium (2s), and long (5s). These scales were selected to represent complementary levels of musical organization, ranging from local timbral events to longer harmonic and structural patterns. Because IRMAS excerpts are approximately three seconds long, the long-scale representation collapses to the clip duration, leaving two effective temporal scales for that dataset.
+
+Unless otherwise stated, all experiments are performed using the calibrated XGBoost model described \textcolor{red}{in the Methodology}. \textcolor{red}{Extending the analysis to Random Forest, SVM, and MLP classifiers is left to future work.}
+
+\textbf{Validation Protocol.} All temporal-sensitivity estimates are computed from out-of-sample predictions. GTZAN is evaluated using repeated stratified ($5\times10$)-fold cross-validation, yielding 50 outer-fold evaluations. FMA-small, MTAT, and IRMAS use stratified five-fold cross-validation for both TSI estimation and fusion analysis. The optimal temporal scale $(k^*(f))$ is selected through nested cross-validation. Scale selection is performed exclusively within the training folds, whereas gain and TSI estimates are computed on held-out data. Consequently, descriptor ranking, temporal-sensitivity estimation, and fusion-strategy construction are based entirely on out-of-sample predictions.
+
+The informativeness threshold $(\tau)$ is estimated separately for each dataset using label-permutation testing. For every permutation replicate, labels are randomly shuffled and the complete scale-selection procedure is repeated, including re-estimation of $(k^*(f))$. This procedure incorporates scale-selection effects into the null distribution and yields a conservative estimate of chance-level information gain. Fifty permutation replicates are used for GTZAN, FMA-small, and IRMAS, whereas fifteen replicates are used for MTAT due to computational cost. \textcolor{red}{The resulting per-dataset thresholds are $\tau_{\text{GTZAN}}$, $\tau_{\text{FMA}}$, $\tau_{\text{MTAT}}$, and $\tau_{\text{IRMAS}}$, against which the exploitability flags in Table~\ref{tab:tsi_summary} are evaluated.}
+% REVISAR: insertar los cuatro valores numericos de tau (estan en tsi_results.json de la corrida real en Drive: clave 'tau' por dataset). Unless otherwise noted, all reported gain matrices, TSI values, and fusion results correspond to averages across the outer evaluation folds.
+
+\textbf{Experiment 1: Descriptor-Level Temporal Sensitivity Analysis.}
+This experiment evaluates how the predictive utility of handcrafted audio descriptors varies across temporal scales. Table~\ref{tab:tsi_summary} reports the Temporal Sensitivity Index (TSI) and the corresponding optimal scale $(k^*)$ for each descriptor and dataset, while Table~\ref{tab:gain_gtzan} presents the complete gain matrix for GTZAN.
+
+\begin{table}[!htp]
+\centering
+{
+\caption{Temporal Sensitivity Index (nested $k^*$ selection, XGBoost) and optimal scale $k^*$ (s = short, m = medium) for each descriptor and dataset. $\dagger$ marks descriptors flagged temporally exploitable (payoff CI lower bound $>0$ and $G(f,k^*)>\tau$).}
+\label{tab:tsi_summary}
+\begin{tabular}{|l|cc|cc|cc|cc|}
+\hline
+ & \multicolumn{2}{c|}{GTZAN} & \multicolumn{2}{c|}{FMA-small} & \multicolumn{2}{c|}{MTAT} & \multicolumn{2}{c|}{IRMAS} \\
+Descriptor & TSI & $k^*$ & TSI & $k^*$ & TSI & $k^*$ & TSI & $k^*$ \\
+\hline
+MFCC              & 0.025$\dagger$ & s & 0.008$\dagger$ & s & 0.000          & m & 0.000          & m \\
+Chroma            & 0.034$\dagger$ & s & 0.009$\dagger$ & s & 0.000          & m & 0.000          & m \\
+Spectral centroid & 0.032$\dagger$ & s & 0.009$\dagger$ & s & 0.002$\dagger$ & s & 0.000          & m \\
+Spectral contrast & 0.034$\dagger$ & s & 0.022$\dagger$ & s & 0.000          & s & 0.013$\dagger$ & s \\
+Spectral rolloff  & 0.019$\dagger$ & s & 0.008$\dagger$ & s & 0.001$\dagger$ & s & 0.000          & m \\
+ZCR               & 0.000          & s & 0.005$\dagger$ & s & 0.001$\dagger$ & s & 0.000          & m \\
+Tonnetz           & 0.085$\dagger$ & s & 0.050$\dagger$ & s & 0.000          & s & 0.000          & m \\
+\hline
+\end{tabular}}
+\end{table}
+
+\begin{table}[!htp]
+\centering
+{
+\caption{GTZAN gain matrix $G(f,k)\pm\sigma$ over the $50$ CV folds (XGBoost), with the nested optimal scale and TSI. Gains decrease monotonically toward longer scales for all descriptors. \textcolor{red}{The TSI column is the nested out-of-fold payoff and may differ slightly from the in-sample difference $G(\mathrm{short})-G(\mathrm{medium})$ shown here, most visibly for non-exploitable descriptors such as ZCR.}}
+\label{tab:gain_gtzan}
+\begin{tabular}{|l|ccc|c|c|}
+\hline
+Descriptor & $G$(short) & $G$(medium) & $G$(long) & $k^*$ & TSI \\
+\hline
+MFCC              & 0.538$\pm$0.027 & 0.514$\pm$0.028 & 0.498$\pm$0.030 & short & 0.025 \\
+Chroma            & 0.327$\pm$0.036 & 0.293$\pm$0.030 & 0.301$\pm$0.030 & short & 0.034 \\
+Spectral centroid & 0.225$\pm$0.024 & 0.193$\pm$0.023 & 0.182$\pm$0.023 & short & 0.032 \\
+Spectral contrast & 0.435$\pm$0.029 & 0.402$\pm$0.030 & 0.399$\pm$0.027 & short & 0.034 \\
+Spectral rolloff  & 0.213$\pm$0.020 & 0.194$\pm$0.017 & 0.179$\pm$0.020 & short & 0.019 \\
+ZCR               & 0.146$\pm$0.026 & 0.142$\pm$0.019 & 0.142$\pm$0.021 & short & 0.000 \\
+Tonnetz           & 0.325$\pm$0.032 & 0.240$\pm$0.028 & 0.215$\pm$0.027 & short & 0.085 \\
+\hline
+\end{tabular}}
+\end{table}
+
+The two genre-classification datasets exhibit a consistent behavior. For both GTZAN and FMA-small, all descriptors achieve their highest normalized information gain at the short temporal scale $((\sim 200)ms)$. \textcolor{red}{Taken at face value this would indicate that the conventional medium-scale aggregation $((\sim 2)s)$ is not the most informative representation for any of the evaluated descriptors; we caution, however, that the short scale also yields many more aggregation windows, so this advantage is partly confounded with estimation quality (discussed in Section~\ref{sec:discussion}) and we do not claim a purely temporal interpretation.}
+
+The magnitude of temporal sensitivity varies considerably across descriptors. Tonnetz exhibits the largest TSI values on both genre datasets, reaching 0.085 on GTZAN and 0.050 on FMA-small. Spectral contrast, chroma, and spectral centroid also show measurable gains from temporal re-scaling. MFCCs remain among the most discriminative descriptors overall but display only moderate sensitivity to temporal scale. In contrast, ZCR is nearly invariant across scales.
+
+The GTZAN gain matrix in Table~\ref{tab:gain_gtzan} provides additional detail. MFCCs achieve the highest information gain at all temporal resolutions, reaching (G=0.538) at the short scale. Across descriptors, gains generally decrease as the aggregation window becomes longer. For example, Tonnetz decreases from (0.325) at the short scale to (0.215) at the long scale, while spectral contrast decreases from (0.435) to (0.399). Longer aggregation windows are therefore associated with lower gains for genre recognition.
+
+The remaining tasks exhibit a different behavior. For IRMAS, the optimal scale corresponds to the medium resolution for six of the seven descriptors, and only spectral contrast displays a measurable payoff ((TSI=0.013)). \textcolor{red}{The short-scale advantage is therefore specific to genre classification and does not hold for instrument recognition, reinforcing that temporal sensitivity is task dependent.} MTAT produces uniformly small TSI values, all below 0.002. Although several descriptors satisfy the temporal-exploitability criterion, the absolute gains remain negligible.
+
+These results indicate that temporal sensitivity depends strongly on the target task. Genre classification benefits from short-term representations, whereas instrument recognition and music auto-tagging exhibit only limited sensitivity to temporal aggregation.
+
+
+
+\textbf{Experiment 2: Statistical Validation of Temporal Effects.}
+This experiment evaluates whether the temporal-scale effects observed in Experiment~1 remain significant after accounting for sampling variability and scale-selection bias.
+
+Table~\ref{tab:pvalues} summarizes the statistical tests performed across temporal scales. Temporal-scale effects are most pronounced on the genre-classification datasets. On GTZAN, six of the seven descriptors exhibit significant differences across scales, with ZCR being the only exception ((p=0.423)). FMA-small produces a similar pattern, with significant temporal effects for all descriptors except ZCR.
+
+\begin{table}[ht]
+\centering
+\caption{Statistical significance of temporal-scale effects. Friedman tests are used for GTZAN, FMA-small, and MTAT; Wilcoxon signed-rank tests are used for IRMAS. Significant results ((p<0.05)) are shown in bold. \textcolor{red}{Per-descriptor $p$-values are reported uncorrected (one omnibus test per descriptor).}}
+\label{tab:pvalues}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+Descriptor & GTZAN & FMA-small & MTAT & IRMAS \\
+\hline
+MFCC & \textbf{0.0000} & \textbf{0.0067} & 0.0743 & 0.3125 \\
+Chroma & \textbf{0.0000} & \textbf{0.0150} & \textbf{0.0224} & 0.0625 \\
+Spectral centroid & \textbf{0.0000} & \textbf{0.0067} & \textbf{0.0150} & 0.0625 \\
+Spectral contrast & \textbf{0.0000} & \textbf{0.0067} & 0.2466 & 0.0625 \\
+Spectral rolloff & \textbf{0.0000} & \textbf{0.0067} & 0.2466 & 0.0625 \\
+ZCR & 0.4232 & \textbf{0.0067} & \textbf{0.0224} & 0.0625 \\
+Tonnetz & \textbf{0.0000} & \textbf{0.0067} & 0.2466 & 0.0625 \\
+\hline
+\end{tabular}
+\end{table}
+
+The evidence is weaker for MTAT and IRMAS. A small number of descriptors achieve statistical significance on MTAT, but the corresponding TSI values remain close to zero. For IRMAS, none of the descriptors reach conventional significance levels, which is consistent with the small temporal payoffs reported in Experiment~1.
+
+To assess the influence of scale-selection bias, in-sample and nested out-of-sample TSI estimates were compared. Table~\ref{tab:residual} reports the resulting optimism values. Across all datasets, the difference between the two estimates remains small, ranging from 0.0002 to 0.0027 TSI units. These values are substantially smaller than the observed TSI values for the most sensitive descriptors.
+
+\begin{table}[ht]
+\centering
+\caption{Residual optimism of TSI estimates, computed as the difference between in-sample and nested out-of-sample TSI values averaged across descriptors.}
+\label{tab:residual}
+\begin{tabular}{|l|c|c|c|}
+\hline
+Dataset & In-sample TSI & Nested TSI & Residual Optimism \\
+\hline
+GTZAN & 0.0352 & 0.0325 & 0.0027 \\
+FMA-small & 0.0163 & 0.0160 & 0.0003 \\
+MTAT & 0.0008 & 0.0005 & 0.0002 \\
+IRMAS & 0.0021 & 0.0018 & 0.0002 \\
+\hline
+\end{tabular}
+\end{table}
+
+The statistical tests and optimism analysis lead to the same conclusion. Temporal-scale effects are robust for genre-classification tasks, whereas the weaker effects observed on MTAT and IRMAS are largely indistinguishable from estimation noise.
+
+\textbf{Experiment 3: Cross-Dataset Generalization of Temporal Sensitivity.} This experiment examines whether descriptor rankings remain stable across datasets and tasks.
+
+Table~\ref{tab:consistency} reports Spearman rank correlations between descriptor-level TSI vectors. The highest agreement is observed between GTZAN and FMA-small, which exhibit identical descriptor rankings $((\rho=1.0)$, 95\% CI [1.00, 1.00]). \textcolor{red}{This correlation is computed over only $n=7$ descriptors, so a single concordant ordering already yields a perfect coefficient and the degenerate confidence interval reflects this small sample.} In both datasets, Tonnetz is the most temporally sensitive descriptor, followed by spectral contrast and chroma, while ZCR occupies the lowest rank.
+
+\begin{table}[!htp]
+\centering
+\caption{Cross-dataset consistency of TSI rankings measured using Spearman rank correlation $((\rho))$ Confidence intervals were obtained through bootstrap resampling of the seven descriptors.}
+\label{tab:consistency}
+\begin{tabular}{|l|c|c|}
+\hline
+Dataset pair & $\rho$ & 95\% CI \\
+\hline
+GTZAN vs FMA-small  & 1.000  & [1.00, 1.00] \\
+GTZAN vs MTAT       & -0.357 & [-0.75, 0.62] \\
+GTZAN vs IRMAS      & 0.408  & [0.00, 0.91] \\
+FMA-small vs MTAT   & -0.357 & [-0.75, 0.62] \\
+FMA-small vs IRMAS  & 0.408  & [0.00, 0.91] \\
+MTAT vs IRMAS       & -0.204 & [-0.81, 0.43] \\
+\hline
+\end{tabular}
+\end{table}
+
+The remaining dataset pairs exhibit substantially weaker agreement. Correlations between the genre-classification datasets and MTAT are negative $((\rho=-0.357))$, while comparisons involving IRMAS yield only moderate correlations accompanied by wide confidence intervals. None of these comparisons reach the conventional $(\rho>0.7)$ threshold often used to indicate strong ranking consistency.
+
+The results point to a task-dependent behavior. Descriptor rankings transfer reliably between genre-classification datasets but do not generalize to music auto-tagging or instrument recognition. This observation is consistent with the low TSI values obtained for MTAT and IRMAS, where temporal re-scaling contributes little additional information.
+
+Temporal sensitivity therefore appears to depend not only on descriptor characteristics but also on the nature of the target task.
+
+\textbf{Experiment 4: Scale-Aware Fusion Evaluation.} The final experiment examines whether temporal-sensitivity estimates can be used to guide feature fusion. Table~\ref{tab:fusion} compares five representation strategies: the best individual temporal scale, early fusion, uniform late fusion, TSI-guided scale selection, and TSI-weighted late fusion. Performance differences among fusion strategies are generally small.
+
+
+\begin{table}[!htp]
+\centering
+\caption{Fusion-strategy comparison using XGBoost. Values correspond to the primary evaluation metric for each dataset (macro-F1 for GTZAN, FMA-small, and IRMAS; mAP for MTAT). TSI-LF denotes TSI-weighted late fusion. Best result for each dataset is shown in bold.}
+\label{tab:fusion}
+\begin{tabular}{|l|ccccc|c|}
+\hline
+Dataset & Single & Early & Late (unif.) & TSI-guided & TSI-LF & ECE \\
+\hline
+GTZAN (F1)     & 0.773 & 0.763 & 0.773 & 0.770 & \textbf{0.781} & 0.202 \\
+FMA-small (F1) & 0.572 & 0.578 & 0.581 & 0.576 & \textbf{0.582} & 0.094 \\
+MTAT (mAP)     & 0.084 & 0.081 & 0.085 & \textbf{0.086} & 0.084 & 0.008 \\
+IRMAS (F1)     & 0.671 & \textbf{0.691} & 0.686 & 0.676 & 0.685 & 0.222 \\
+\hline
+\end{tabular}
+\end{table}
+
+For GTZAN, TSI-weighted late fusion achieves the highest macro-F1 score (0.781). Pairwise Wilcoxon signed-rank tests indicate significant differences relative to the remaining strategies after Bonferroni correction ((p<0.005)). However, the corresponding Cliff's $\delta$ \textcolor{red}{\cite{cliff1993dominance}} values remain small $((|\delta|\leq0.26))$, indicating that the practical improvement is limited. FMA-small exhibits a similar ranking of methods, with TSI-weighted late fusion producing the highest score (0.582), although none of the pairwise comparisons remain significant after multiple-comparison correction.
+
+The results for MTAT and IRMAS differ from the genre-classification benchmarks. On MTAT, all strategies achieve nearly identical mAP values, ranging from 0.081 to 0.086. The best score is obtained by TSI-guided scale selection, but the margin relative to the remaining methods is negligible. On IRMAS, early fusion achieves the highest cross-validated macro-F1 score (0.691), slightly outperforming the scale-aware approaches. \textcolor{red}{For MTAT and IRMAS the differences between strategies fall within fold-level noise, so the pairwise significance tests applied to the genre datasets are not reported for these two tasks.}
+
+An additional observation concerns the relationship between TSI-weighted and learned late fusion. Across all datasets, the learned weighting scheme converges to solutions \textcolor{red}{very close to} the TSI-derived weights, \textcolor{red}{producing predictive performance that differs only within noise}.
+
+Two observations are worth noting. First, MTAT performance remains low in absolute terms $((\text{mAP}\approx0.085))$, reflecting the limited suitability of the evaluated handcrafted descriptors for large-scale multi-label tagging. Second, IRMAS exhibits a substantial discrepancy between cross-validation and the official benchmark split. While cross-validated macro-F1 ranges between 0.67 and 0.69, performance on the official polyphonic test set drops to approximately 0.06 macro-F1 for all strategies. A smaller but similar reduction is observed on the official FMA-small split. \textcolor{red}{This gap reflects a domain shift rather than a modeling failure: IRMAS training and cross-validation data consist of single-instrument excerpts, whereas the official test set is polyphonic and multi-labelled. The two protocols therefore measure different tasks, and a single-label macro-F1 on the multi-label test is only weakly informative; the cross-validated figures should be read as the within-distribution result.}
+
+The fusion results are consistent with the temporal-sensitivity analysis. The largest benefits are observed on the datasets where descriptor-level temporal effects are strongest, while tasks with weak temporal sensitivity show little difference among fusion strategies.
+
+\section{Discussion}
+\label{sec:discussion}
+
+The results indicate that temporal sensitivity is a measurable property of handcrafted MIR descriptors, although its magnitude and relevance depend strongly on the target task. The most consistent pattern appears in genre classification, where all descriptors achieve their highest information gain at the short temporal scale $((\sim 200) ms)$ on both GTZAN and FMA-small. The two datasets produce \textcolor{red}{identical descriptor rankings}, suggesting that the observed rankings are not dataset-specific artifacts but reflect a stable behavior within this task \textcolor{red}{(though over only seven descriptors)}.
+
+A possible explanation is that genre discrimination relies heavily on short-term timbral and spectral variations. Since the proposed representation summarizes descriptors through successive mean and standard-deviation aggregation, extending the aggregation window may smooth precisely the local fluctuations that distinguish musical genres. This interpretation is consistent with the monotonic decrease in information gain observed from short to long scales. It also helps explain why MFCCs remain the most discriminative descriptors across all scales while exhibiting only moderate temporal sensitivity: they retain substantial predictive value regardless of aggregation horizon, leaving limited room for improvement through temporal re-scaling.
+
+\textcolor{red}{An alternative, non-musical explanation must also be considered as a threat to validity. The two-stage aggregation summarizes each track by the mean and standard deviation \emph{across windows}: the short scale yields roughly 150 windows per 30\,s excerpt, whereas the long scale yields only about 6. The across-window statistics are therefore estimated from far more samples at the short scale, so part of the systematic short-scale advantage may stem from better-estimated summary statistics rather than from a genuinely more informative temporal resolution. Disentangling the two would require an ablation that controls the number of aggregation windows (for instance, subsampling short-scale windows to match the long-scale count); we leave this to future work and interpret the absolute short-scale advantage with the corresponding caution.}
+
+The descriptor ranking differs in several respects from the initial expectations. Tonnetz, which was expected to be relatively stable because of its harmonic nature, exhibits the largest temporal sensitivity on both genre datasets. Conversely, ZCR remains nearly invariant across scales and is the only descriptor that does not show significant temporal effects on GTZAN. These observations highlight the value of measuring temporal sensitivity directly rather than inferring it from the musical interpretation of a descriptor.
+
+The fusion experiments provide a more conservative outcome. Although TSI-guided strategies occasionally achieve the highest scores, the observed improvements are small and rarely statistically meaningful. The strongest result is obtained on GTZAN, where TSI-weighted late fusion achieves the highest macro-F1 score, yet the associated effect sizes remain small. This suggests that most scale-dependent information is already captured by conventional multi-scale representations and absorbed by the classifier. In this sense, the primary contribution of the TSI is not improved predictive performance, but rather an interpretable characterization of descriptor behavior across temporal scales.
+
+The weak temporal effects observed on MTAT and IRMAS should also be interpreted cautiously. On MTAT, descriptor-level gains remain close to the chance floor, making it difficult to identify meaningful temporal patterns. \textcolor{red}{Because absolute performance is near the floor (mAP$\approx$0.085), a near-zero TSI on MTAT should be read as temporal effects being \emph{undetectable} under this descriptor and classifier regime rather than as positive evidence of their absence.} On IRMAS, the reduced number of effective scales and the substantial mismatch between training and test conditions likely dominate any temporal effects. The absence of transferable descriptor rankings across these tasks further supports the view that temporal sensitivity is task dependent rather than a universal descriptor property.
+
+Several limitations should be acknowledged. First, the present study reports results obtained with XGBoost, while the Random Forest, SVM, and MLP evaluations remain part of future work. Second, TSI estimates for MTAT are derived from a computationally manageable subset rather than the complete dataset. Third, the proposed metric relies on calibrated probabilities, and calibration quality directly influences information-gain estimates. \textcolor{red}{The measured calibration error is non-negligible on some tasks (ECE$\approx$0.20 on GTZAN and IRMAS, Table~\ref{tab:fusion}), so the corresponding gain and TSI values should be interpreted with that caveat.} Finally, although the temporal effects observed for genre classification are statistically reliable, their practical magnitude remains modest. Consequently, the main value of the proposed framework lies in analysis and interpretation rather than substantial improvements in classification accuracy.
+
+\section{Conclusions}
+
+This paper introduced the \textbf{Temporal Sensitivity Index (TSI)}, a descriptor-level measure designed to quantify the predictive benefit of extracting handcrafted audio descriptors at different temporal resolutions. The proposed framework was evaluated on seven widely used descriptors across four MIR benchmarks covering genre classification, music auto-tagging, and instrument recognition.
+
+The results show that temporal aggregation affects descriptors unevenly and that these effects depend strongly on the target task. For genre classification, all descriptors achieve their highest information gain at the short temporal scale $((\sim 200) ms)$, \textcolor{red}{suggesting that the conventional 2s aggregation window may not be optimal for this setting, although we report this short-scale advantage with caution because it is partly confounded with the number of aggregation windows and was obtained with a single classifier}. Tonnetz exhibits the largest temporal sensitivity, followed by spectral contrast and chroma, while the descriptor rankings remain \textcolor{red}{identical} across genre datasets. In contrast, temporal effects are weak for music auto-tagging and instrument recognition.
+
+The proposed TSI-guided fusion strategies provide only marginal performance improvements over conventional fusion methods. As a result, the principal contribution of the TSI is not as a fusion mechanism, but as an interpretable tool for analyzing descriptor behavior and identifying appropriate temporal scales for handcrafted MIR representations.
+
+Future work will extend the evaluation to additional classifier families, investigate descriptor-level temporal sensitivity in larger and more diverse datasets, and explore whether the scales identified by TSI can inform the design of lightweight multi-scale audio representations.
+
+\textcolor{red}{The code and extracted features used in this study are publicly available to ensure reproducibility at \texttt{github.com/Gabrieleeh32159/my\_paper}.}
+% REVISAR: confirmar URL del repositorio (y si se hara publico) antes de camera-ready.
+
+
+% ---- Bibliography ----
+%
+% BibTeX users should specify bibliography style 'splncs04'.
+% References will then be sorted and formatted in the correct style.
+%
+\bibliographystyle{splncs04}
+\bibliography{references}
+\end{document}

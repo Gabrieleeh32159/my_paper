@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI — Resultados experimentales</title>
+<style>
+  :root{
+    --ink:#1a2230; --muted:#5a6678; --line:#d8dee8; --bg:#f4f6fa;
+    --card:#ffffff; --accent:#2c5b9c; --accent2:#3a7d44; --accent3:#7d4f9c;
+    --warn:#b03a2e; --soft:#eef2f8; --chip:#e7edf6;
+    --short:#e8731c; --medium:#2c8a4a; --long:#7d4f9c;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.45; font-size:14px;
+  }
+  .page{max-width:1180px; margin:0 auto; padding:28px 30px 60px}
+  header.hero{
+    background:linear-gradient(135deg,#1f3a63,#2c5b9c);
+    color:#fff; border-radius:14px; padding:24px 30px; margin-bottom:22px;
+    box-shadow:0 6px 22px rgba(31,58,99,.18);
+  }
+  header.hero h1{margin:0 0 6px; font-size:24px; line-height:1.25; letter-spacing:.2px}
+  header.hero .sub{font-size:14px; opacity:.95; margin:2px 0}
+  .badge{display:inline-block; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.35);
+    padding:3px 10px; border-radius:999px; font-size:12px; margin:8px 8px 0 0}
+  .grid{display:grid; gap:18px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .span-2{grid-column:span 2}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:18px 20px; box-shadow:0 1px 3px rgba(20,30,50,.04); margin-bottom:18px;
+  }
+  .card h2{
+    margin:0 0 12px; font-size:16px; color:var(--accent);
+    display:flex; align-items:center; gap:9px;
+  }
+  .card h2 .n{
+    background:var(--accent2); color:#fff; min-width:24px; height:24px; border-radius:7px; padding:0 6px;
+    display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex:none;
+  }
+  .card h3{margin:16px 0 6px; font-size:12.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px}
+  .muted{color:var(--muted)}
+  .small{font-size:12.5px}
+  table{width:100%; border-collapse:collapse; font-size:12.6px; margin-top:4px}
+  th,td{text-align:right; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted); font-weight:600; font-size:11.2px; text-transform:uppercase; letter-spacing:.3px}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#f8fafd}
+  td.best{font-weight:700; color:var(--accent2)}
+  tr.sum td{font-weight:700; border-top:2px solid var(--line)}
+  .pill{display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600}
+  .pill-short{background:#fbe6d4; color:#9a4e15; border:1px solid #f0c9a6}
+  .pill-medium{background:#d8f0df; color:#1f6a37; border:1px solid #aedcbb}
+  .pill-long{background:#e9ddf5; color:#5e3680; border:1px solid #d2bce8}
+  .yes{color:var(--accent2); font-weight:700}
+  .no{color:var(--muted)}
+  .sig{color:var(--warn); font-weight:700}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.8px; margin-top:10px; color:var(--muted)}
+  footer{margin-top:8px; text-align:center; color:var(--muted); font-size:12px}
+  @media print{
+    body{background:#fff; font-size:11px}
+    .page{max-width:none; padding:0}
+    .card{break-inside:avoid; box-shadow:none}
+    header.hero{box-shadow:none}
+  }
+  @media (max-width:820px){ .cols-2{grid-template-columns:1fr} .span-2{grid-column:auto} }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <h1>Temporal Sensitivity Index — Resultados experimentales</h1>
+    <div class="sub">Clasificador: <b>XGBoost</b> calibrado (sigmoid) · Métrica primaria: macro-F1 (GTZAN, FMA-small, IRMAS), mAP (MTAT)</div>
+    <div class="sub">Fuente: <code>experiments/02_tsi_and_fusion.ipynb</code> (ejecutado completo en Colab) — <i>source of truth</i></div>
+    <span class="badge">GTZAN · 999 · 5×10 CV (50 folds)</span>
+    <span class="badge">FMA-small · 7&#8239;996 · 5-fold</span>
+    <span class="badge">MTAT · 25&#8239;700 (TSI sobre 10&#8239;062) · 5-fold</span>
+    <span class="badge">IRMAS · 3&#8239;756 · 5-fold · K=2 escalas</span>
+  </header>
+
+  <!-- 1. TSI summary -->
+  <div class="card">
+    <h2><span class="n">TSI</span>Índice de Sensibilidad Temporal (anidado) y escala óptima k*</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Descriptor</th>
+          <th>GTZAN TSI</th><th>k*</th>
+          <th>FMA TSI</th><th>k*</th>
+          <th>MTAT TSI</th><th>k*</th>
+          <th>IRMAS TSI</th><th>k*</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>MFCC</td>             <td>0.025 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.008 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td></tr>
+        <tr><td>Chroma</td>           <td>0.034 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.009 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td></tr>
+        <tr><td>Spectral centroid</td><td>0.032 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.009 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.002 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td></tr>
+        <tr><td>Spectral contrast</td><td>0.034 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.022 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-short">short</span></td><td>0.013 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td></tr>
+        <tr><td>Spectral rolloff</td> <td>0.019 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.008 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.001 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td></tr>
+        <tr><td>ZCR</td>              <td>&minus;0.000 <span class="no">&mdash;</span></td><td><span class="pill pill-short">short</span></td><td>0.005 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.001 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td></tr>
+        <tr><td>Tonnetz</td>          <td class="best">0.085 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td class="best">0.050 <span class="yes">&#10003;</span></td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-short">short</span></td><td>0.000</td><td><span class="pill pill-medium">medium</span></td></tr>
+      </tbody>
+    </table>
+    <div class="legend"><span><span class="yes">&#10003;</span> temporalmente explotable (CI payoff &gt; 0 y G(k*) &gt; &tau;)</span><span><span class="no">&mdash;</span> no explotable</span><span>&tau;: GTZAN 0.0082 · FMA 0.0006 · MTAT &minus;0.0002 · IRMAS 0.0016</span></div>
+  </div>
+
+  <!-- 2. Gain matrices -->
+  <div class="grid cols-2">
+    <div class="card">
+      <h2><span class="n">G</span>Matriz de ganancia — GTZAN <span class="muted small">(50 folds)</span></h2>
+      <table>
+        <thead><tr><th>Desc.</th><th>G short</th><th>G medium</th><th>G long</th><th>k*</th><th>TSI</th></tr></thead>
+        <tbody>
+          <tr><td>MFCC</td><td class="best">0.538&plusmn;.027</td><td>0.514&plusmn;.028</td><td>0.498&plusmn;.030</td><td><span class="pill pill-short">s</span></td><td>0.025</td></tr>
+          <tr><td>Chroma</td><td class="best">0.327&plusmn;.036</td><td>0.293&plusmn;.030</td><td>0.301&plusmn;.030</td><td><span class="pill pill-short">s</span></td><td>0.034</td></tr>
+          <tr><td>Sp. centroid</td><td class="best">0.225&plusmn;.024</td><td>0.193&plusmn;.023</td><td>0.182&plusmn;.023</td><td><span class="pill pill-short">s</span></td><td>0.032</td></tr>
+          <tr><td>Sp. contrast</td><td class="best">0.435&plusmn;.029</td><td>0.402&plusmn;.030</td><td>0.399&plusmn;.027</td><td><span class="pill pill-short">s</span></td><td>0.034</td></tr>
+          <tr><td>Sp. rolloff</td><td class="best">0.213&plusmn;.020</td><td>0.194&plusmn;.017</td><td>0.179&plusmn;.020</td><td><span class="pill pill-short">s</span></td><td>0.019</td></tr>
+          <tr><td>ZCR</td><td class="best">0.146&plusmn;.026</td><td>0.142&plusmn;.019</td><td>0.142&plusmn;.021</td><td><span class="pill pill-short">s</span></td><td>&minus;0.000</td></tr>
+          <tr><td>Tonnetz</td><td class="best">0.325&plusmn;.032</td><td>0.240&plusmn;.028</td><td>0.215&plusmn;.027</td><td><span class="pill pill-short">s</span></td><td>0.085</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">G</span>Matriz de ganancia — FMA-small <span class="muted small">(5 folds)</span></h2>
+      <table>
+        <thead><tr><th>Desc.</th><th>G short</th><th>G medium</th><th>G long</th><th>k*</th><th>TSI</th></tr></thead>
+        <tbody>
+          <tr><td>MFCC</td><td class="best">0.309&plusmn;.012</td><td>0.301&plusmn;.015</td><td>0.286&plusmn;.013</td><td><span class="pill pill-short">s</span></td><td>0.008</td></tr>
+          <tr><td>Chroma</td><td class="best">0.181&plusmn;.008</td><td>0.172&plusmn;.004</td><td>0.157&plusmn;.004</td><td><span class="pill pill-short">s</span></td><td>0.009</td></tr>
+          <tr><td>Sp. centroid</td><td class="best">0.122&plusmn;.006</td><td>0.113&plusmn;.005</td><td>0.096&plusmn;.007</td><td><span class="pill pill-short">s</span></td><td>0.009</td></tr>
+          <tr><td>Sp. contrast</td><td class="best">0.262&plusmn;.015</td><td>0.240&plusmn;.014</td><td>0.229&plusmn;.012</td><td><span class="pill pill-short">s</span></td><td>0.022</td></tr>
+          <tr><td>Sp. rolloff</td><td class="best">0.109&plusmn;.008</td><td>0.102&plusmn;.008</td><td>0.091&plusmn;.006</td><td><span class="pill pill-short">s</span></td><td>0.008</td></tr>
+          <tr><td>ZCR</td><td class="best">0.101&plusmn;.003</td><td>0.094&plusmn;.004</td><td>0.078&plusmn;.002</td><td><span class="pill pill-short">s</span></td><td>0.005</td></tr>
+          <tr><td>Tonnetz</td><td class="best">0.191&plusmn;.009</td><td>0.141&plusmn;.006</td><td>0.125&plusmn;.006</td><td><span class="pill pill-short">s</span></td><td>0.050</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">G</span>Matriz de ganancia — MTAT <span class="muted small">(5 folds, multilabel)</span></h2>
+      <table>
+        <thead><tr><th>Desc.</th><th>G short</th><th>G medium</th><th>G long</th><th>k*</th><th>TSI</th></tr></thead>
+        <tbody>
+          <tr><td>MFCC</td><td>0.001&plusmn;.002</td><td class="best">0.002&plusmn;.001</td><td>0.002&plusmn;.002</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>Chroma</td><td>0.001&plusmn;.001</td><td class="best">0.002&plusmn;.002</td><td>0.002&plusmn;.002</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>Sp. centroid</td><td class="best">0.001&plusmn;.000</td><td>0.000&plusmn;.000</td><td>0.000&plusmn;.000</td><td><span class="pill pill-short">s</span></td><td>0.002</td></tr>
+          <tr><td>Sp. contrast</td><td class="best">0.002&plusmn;.001</td><td>0.001&plusmn;.001</td><td>0.002&plusmn;.001</td><td><span class="pill pill-short">s</span></td><td>0.000</td></tr>
+          <tr><td>Sp. rolloff</td><td class="best">0.001&plusmn;.000</td><td>0.000&plusmn;.000</td><td>0.000&plusmn;.000</td><td><span class="pill pill-short">s</span></td><td>0.001</td></tr>
+          <tr><td>ZCR</td><td class="best">0.000&plusmn;.000</td><td>0.000&plusmn;.000</td><td>0.000&plusmn;.000</td><td><span class="pill pill-short">s</span></td><td>0.001</td></tr>
+          <tr><td>Tonnetz</td><td class="best">0.003&plusmn;.001</td><td>0.002&plusmn;.002</td><td>0.002&plusmn;.001</td><td><span class="pill pill-short">s</span></td><td>0.000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">G</span>Matriz de ganancia — IRMAS <span class="muted small">(5 folds, K=2)</span></h2>
+      <table>
+        <thead><tr><th>Desc.</th><th>G short</th><th>G medium</th><th>k*</th><th>TSI</th></tr></thead>
+        <tbody>
+          <tr><td>MFCC</td><td>0.408&plusmn;.015</td><td class="best">0.415&plusmn;.016</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>Chroma</td><td>0.147&plusmn;.009</td><td class="best">0.168&plusmn;.009</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>Sp. centroid</td><td>0.072&plusmn;.004</td><td class="best">0.114&plusmn;.014</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>Sp. contrast</td><td class="best">0.301&plusmn;.021</td><td>0.288&plusmn;.017</td><td><span class="pill pill-short">s</span></td><td>0.013</td></tr>
+          <tr><td>Sp. rolloff</td><td>0.082&plusmn;.006</td><td class="best">0.121&plusmn;.009</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>ZCR</td><td>0.039&plusmn;.002</td><td class="best">0.073&plusmn;.007</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+          <tr><td>Tonnetz</td><td>0.107&plusmn;.005</td><td class="best">0.128&plusmn;.010</td><td><span class="pill pill-medium">m</span></td><td>0.000</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 3. Fusion -->
+  <div class="card">
+    <h2><span class="n">FUS</span>Estrategias de fusión (XGBoost · media &plusmn; std sobre folds)</h2>
+    <table>
+      <thead><tr><th>Dataset (métrica)</th><th>Single</th><th>Early</th><th>Late (unif)</th><th>TSI-guided</th><th>TSI-LF</th><th>Learned-LF</th><th>ECE</th></tr></thead>
+      <tbody>
+        <tr><td>GTZAN (macro-F1)</td><td>0.7725&plusmn;.034</td><td>0.7628&plusmn;.036</td><td>0.7727&plusmn;.038</td><td>0.7703&plusmn;.036</td><td class="best">0.7812&plusmn;.038</td><td>0.7812&plusmn;.038</td><td>0.2015</td></tr>
+        <tr><td>FMA-small (macro-F1)</td><td>0.5716&plusmn;.011</td><td>0.5782&plusmn;.016</td><td>0.5813&plusmn;.017</td><td>0.5755&plusmn;.011</td><td class="best">0.5822&plusmn;.015</td><td>0.5822&plusmn;.015</td><td>0.0943</td></tr>
+        <tr><td>MTAT (mAP)</td><td>0.0840&plusmn;.006</td><td>0.0814&plusmn;.005</td><td>0.0854&plusmn;.005</td><td class="best">0.0855&plusmn;.007</td><td>0.0841&plusmn;.005</td><td>0.0842&plusmn;.005</td><td>0.0082</td></tr>
+        <tr><td>IRMAS (macro-F1)</td><td>0.6713&plusmn;.058</td><td class="best">0.6911&plusmn;.018</td><td>0.6860&plusmn;.048</td><td>0.6762&plusmn;.034</td><td>0.6847&plusmn;.049</td><td>0.6847&plusmn;.049</td><td>0.2218</td></tr>
+      </tbody>
+    </table>
+    <h3>Split oficial (referencia secundaria, macro-F1)</h3>
+    <table>
+      <thead><tr><th>Dataset</th><th>Single</th><th>Early</th><th>Late (unif)</th><th>TSI-guided</th><th>TSI-LF</th><th>Learned-LF</th></tr></thead>
+      <tbody>
+        <tr><td>FMA-small</td><td>0.441</td><td class="best">0.454</td><td>0.446</td><td>0.437</td><td>0.443</td><td>0.443</td></tr>
+        <tr><td>IRMAS</td><td>0.061</td><td class="best">0.062</td><td>0.063</td><td>0.061</td><td>0.062</td><td>0.062</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 4. Pairwise Wilcoxon -->
+  <div class="card">
+    <h2><span class="n">W</span>Comparación pareada entre estrategias — Wilcoxon (Bonferroni, &alpha;<sub>corr</sub>=0.005)</h2>
+    <div class="grid cols-2">
+      <div>
+        <h3>GTZAN / XGB</h3>
+        <table>
+          <thead><tr><th>Par</th><th>p</th><th>&delta;</th><th>Efecto</th><th>Sig.</th></tr></thead>
+          <tbody>
+            <tr><td>Single vs Early</td><td>0.0196</td><td>0.141</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs Late</td><td>0.8109</td><td>&minus;0.002</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-guided</td><td>0.0735</td><td>0.028</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-LF</td><td>0.0019</td><td>&minus;0.138</td><td>negligible</td><td class="sig">&#10003;</td></tr>
+            <tr><td>Early vs Late</td><td>0.0115</td><td>&minus;0.140</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-guided</td><td>0.0708</td><td>&minus;0.126</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-LF</td><td>0.0000</td><td>&minus;0.260</td><td>small</td><td class="sig">&#10003;</td></tr>
+            <tr><td>Late vs TSI-guided</td><td>0.5273</td><td>0.030</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-LF</td><td>0.0033</td><td>&minus;0.128</td><td>negligible</td><td class="sig">&#10003;</td></tr>
+            <tr><td>TSI-guided vs TSI-LF</td><td>0.0009</td><td>&minus;0.164</td><td>small</td><td class="sig">&#10003;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>FMA-small / XGB</h3>
+        <table>
+          <thead><tr><th>Par</th><th>p</th><th>&delta;</th><th>Efecto</th><th>Sig.</th></tr></thead>
+          <tbody>
+            <tr><td>Single vs Early</td><td>0.125</td><td>&minus;0.20</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs Late</td><td>0.125</td><td>&minus;0.20</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-guided</td><td>0.500</td><td>&minus;0.24</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-LF</td><td>0.0625</td><td>&minus;0.36</td><td>medium</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs Late</td><td>0.125</td><td>&minus;0.20</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-guided</td><td>0.8125</td><td>&minus;0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-LF</td><td>0.125</td><td>&minus;0.28</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-guided</td><td>0.8125</td><td>0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-LF</td><td>1.000</td><td>&minus;0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>TSI-guided vs TSI-LF</td><td>0.3125</td><td>&minus;0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>MTAT / XGB</h3>
+        <table>
+          <thead><tr><th>Par</th><th>p</th><th>&delta;</th><th>Efecto</th><th>Sig.</th></tr></thead>
+          <tbody>
+            <tr><td>Single vs Early</td><td>0.125</td><td>0.36</td><td>medium</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs Late</td><td>0.4375</td><td>&minus;0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-guided</td><td>1.000</td><td>&minus;0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-LF</td><td>1.000</td><td>0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs Late</td><td>0.0625</td><td>&minus;0.52</td><td>large</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-guided</td><td>0.3125</td><td>&minus;0.52</td><td>large</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-LF</td><td>0.0625</td><td>&minus;0.52</td><td>large</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-guided</td><td>1.000</td><td>0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-LF</td><td>0.1875</td><td>0.28</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>TSI-guided vs TSI-LF</td><td>1.000</td><td>0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>IRMAS / XGB</h3>
+        <table>
+          <thead><tr><th>Par</th><th>p</th><th>&delta;</th><th>Efecto</th><th>Sig.</th></tr></thead>
+          <tbody>
+            <tr><td>Single vs Early</td><td>1.000</td><td>&minus;0.20</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs Late</td><td>0.125</td><td>&minus;0.20</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-guided</td><td>1.000</td><td>&minus;0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Single vs TSI-LF</td><td>0.125</td><td>&minus;0.20</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs Late</td><td>0.8125</td><td>0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-guided</td><td>0.3125</td><td>0.28</td><td>small</td><td class="no">&mdash;</td></tr>
+            <tr><td>Early vs TSI-LF</td><td>0.8125</td><td>0.04</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-guided</td><td>0.625</td><td>0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>Late vs TSI-LF</td><td>0.1875</td><td>0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+            <tr><td>TSI-guided vs TSI-LF</td><td>0.625</td><td>&minus;0.12</td><td>negligible</td><td class="no">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Scale-difference tests -->
+  <div class="card">
+    <h2><span class="n">F</span>Test de diferencia entre escalas — Friedman / Wilcoxon (p-valor)</h2>
+    <table>
+      <thead><tr><th>Descriptor</th><th>GTZAN (Fried.)</th><th>FMA (Fried.)</th><th>MTAT (Fried.)</th><th>IRMAS (Wilcox.)</th></tr></thead>
+      <tbody>
+        <tr><td>MFCC</td><td>0.0000 <span class="yes">&#10003;</span></td><td>0.0067 <span class="yes">&#10003;</span></td><td>0.0743 <span class="no">&mdash;</span></td><td>0.3125 <span class="no">&mdash;</span></td></tr>
+        <tr><td>Chroma</td><td>0.0000 <span class="yes">&#10003;</span></td><td>0.0150 <span class="yes">&#10003;</span></td><td>0.0224 <span class="yes">&#10003;</span></td><td>0.0625 <span class="no">&mdash;</span></td></tr>
+        <tr><td>Spectral centroid</td><td>0.0000 <span class="yes">&#10003;</span></td><td>0.0067 <span class="yes">&#10003;</span></td><td>0.0150 <span class="yes">&#10003;</span></td><td>0.0625 <span class="no">&mdash;</span></td></tr>
+        <tr><td>Spectral contrast</td><td>0.0000 <span class="yes">&#10003;</span></td><td>0.0067 <span class="yes">&#10003;</span></td><td>0.2466 <span class="no">&mdash;</span></td><td>0.0625 <span class="no">&mdash;</span></td></tr>
+        <tr><td>Spectral rolloff</td><td>0.0000 <span class="yes">&#10003;</span></td><td>0.0067 <span class="yes">&#10003;</span></td><td>0.2466 <span class="no">&mdash;</span></td><td>0.0625 <span class="no">&mdash;</span></td></tr>
+        <tr><td>ZCR</td><td>0.4232 <span class="no">&mdash;</span></td><td>0.0067 <span class="yes">&#10003;</span></td><td>0.0224 <span class="yes">&#10003;</span></td><td>0.0625 <span class="no">&mdash;</span></td></tr>
+        <tr><td>Tonnetz</td><td>0.0000 <span class="yes">&#10003;</span></td><td>0.0067 <span class="yes">&#10003;</span></td><td>0.2466 <span class="no">&mdash;</span></td><td>0.0625 <span class="no">&mdash;</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 6. Consistency + residual optimism -->
+  <div class="grid cols-2">
+    <div class="card">
+      <h2><span class="n">&rho;</span>Consistencia de rankings TSI — Spearman</h2>
+      <table>
+        <thead><tr><th>Par de datasets</th><th>&rho;</th><th>95% CI</th><th>Consist.</th></tr></thead>
+        <tbody>
+          <tr><td>GTZAN vs FMA-small</td><td class="best">1.000</td><td>[1.00, 1.00]</td><td class="yes">&#10003;</td></tr>
+          <tr><td>GTZAN vs MTAT</td><td>&minus;0.357</td><td>[&minus;0.75, 0.62]</td><td class="no">&mdash;</td></tr>
+          <tr><td>GTZAN vs IRMAS</td><td>0.408</td><td>[0.00, 0.91]</td><td class="no">&mdash;</td></tr>
+          <tr><td>FMA-small vs MTAT</td><td>&minus;0.357</td><td>[&minus;0.75, 0.62]</td><td class="no">&mdash;</td></tr>
+          <tr><td>FMA-small vs IRMAS</td><td>0.408</td><td>[0.00, 0.91]</td><td class="no">&mdash;</td></tr>
+          <tr><td>MTAT vs IRMAS</td><td>&minus;0.204</td><td>[&minus;0.81, 0.43]</td><td class="no">&mdash;</td></tr>
+        </tbody>
+      </table>
+      <div class="legend"><span>Consistente = CI inferior &gt; 0.7</span></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">RO</span>Optimismo residual (TSI in-sample vs anidado · media)</h2>
+      <table>
+        <thead><tr><th>Dataset</th><th>TSI in-sample</th><th>TSI anidado</th><th>Optimismo res.</th></tr></thead>
+        <tbody>
+          <tr><td>GTZAN</td><td>0.0352</td><td>0.0325</td><td>0.0027</td></tr>
+          <tr><td>FMA-small</td><td>0.0163</td><td>0.0160</td><td>0.0003</td></tr>
+          <tr><td>MTAT</td><td>0.0008</td><td>0.0005</td><td>0.0002</td></tr>
+          <tr><td>IRMAS</td><td>0.0021</td><td>0.0018</td><td>0.0002</td></tr>
+        </tbody>
+      </table>
+      <div class="legend"><span>Media sobre los 7 descriptores</span></div>
+    </div>
+  </div>
+
+  <footer>Datos extraídos de <code>experiments/02_tsi_and_fusion.ipynb</code> — clasificador XGBoost calibrado.</footer>
+
+</div>
+</body>
+</html>
